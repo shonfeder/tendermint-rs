@@ -133,7 +133,7 @@ impl From<toml::de::Error> for Error {
 
 /// Kinds of errors
 #[derive(Clone, Eq, PartialEq, Debug, Fail)]
-pub enum ErrorKind {
+pub enum Kind {
     /// Cryptographic operation failed
     #[fail(display = "cryptographic error")]
     Crypto,

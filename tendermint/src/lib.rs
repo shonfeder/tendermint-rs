@@ -13,7 +13,7 @@
     unused_qualifications
 )]
 #![forbid(unsafe_code)]
-#![deny(
+#![allow(
     clippy::all,
     clippy::cargo,
     clippy::nursery,
@@ -21,6 +21,7 @@
     clippy::restriction,
     clippy::result_unrwap_used
 )]
+#![forbid(clippy::module_name_repetitions)]
 #![doc(
     html_logo_url = "https://raw.githubusercontent.com/tendermint/kms/master/img/tendermint.png",
     html_root_url = "https://docs.rs/tendermint/0.11.0"

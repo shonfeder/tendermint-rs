@@ -2,7 +2,7 @@
 //!
 //! This module contains types which correspond to the following config files:
 //!
-//! - `config.toml`: `config::TendermintConfig`
+//! - `config.toml`: `config::Tendermint`
 //! - `node_key.rs`: `config::node_key::NodeKey`
 //! - `priv_validator_key.rs`: `config::priv_validator_key::PrivValidatorKey`
 
@@ -13,7 +13,7 @@ pub use self::{node_key::NodeKey, priv_validator_key::PrivValidatorKey};
 
 use crate::{
     abci::tag,
-    error::{Error, ErrorKind},
+    error::{self, Error},
     genesis::Genesis,
     net, node, Moniker, Timeout,
 };
@@ -27,7 +27,7 @@ use std::{
 
 /// Tendermint `config.toml` file
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct TendermintConfig {
+pub struct Tendermint {
     /// TCP or UNIX socket address of the ABCI application,
     /// or the name of an ABCI application compiled in with the Tendermint binary.
     pub proxy_app: net::Address,
@@ -83,25 +83,25 @@ pub struct TendermintConfig {
     pub filter_peers: bool,
 
     /// rpc server configuration options
-    pub rpc: RpcConfig,
+    pub rpc: Rpc,
 
     /// peer to peer configuration options
-    pub p2p: P2PConfig,
+    pub p2p: P2P,
 
     /// mempool configuration options
-    pub mempool: MempoolConfig,
+    pub mempool: Mempool,
 
     /// consensus configuration options
-    pub consensus: ConsensusConfig,
+    pub consensus: Consensus,
 
     /// transactions indexer configuration options
-    pub tx_index: TxIndexConfig,
+    pub tx_index: TxIndex,
 
     /// instrumentation configuration options
-    pub instrumentation: InstrumentationConfig,
+    pub instrumentation: Instrumentation,
 }
 
-impl TendermintConfig {
+impl Tendermint {
     /// Parse Tendermint `config.toml`
     pub fn parse_toml<T: AsRef<str>>(toml_string: T) -> Result<Self, Error> {
         Ok(toml::from_str(toml_string.as_ref())?)
@@ -114,7 +114,7 @@ impl TendermintConfig {
     {
         let toml_string = fs::read_to_string(path).map_err(|e| {
             err!(
-                ErrorKind::Parse,
+                error::Kind::Parse,
                 "couldn't open {}: {}",
                 path.as_ref().display(),
                 e
@@ -127,8 +127,14 @@ impl TendermintConfig {
     /// Load `genesis.json` file from the configured location
     pub fn load_genesis_file(&self, home: impl AsRef<Path>) -> Result<Genesis, Error> {
         let path = home.as_ref().join(&self.genesis_file);
-        let genesis_json = fs::read_to_string(&path)
-            .map_err(|e| err!(ErrorKind::Parse, "couldn't open {}: {}", path.display(), e))?;
+        let genesis_json = fs::read_to_string(&path).map_err(|e| {
+            err!(
+                error::Kind::Parse,
+                "couldn't open {}: {}",
+                path.display(),
+                e
+            )
+        })?;
 
         Ok(serde_json::from_str(genesis_json.as_ref())?)
     }
@@ -188,7 +194,11 @@ impl FromStr for LogLevel {
             let parts = level.split(':').collect::<Vec<_>>();
 
             if parts.len() != 2 {
-                return Err(err!(ErrorKind::Parse, "error parsing log level: {}", level));
+                return Err(err!(
+                    error::Kind::Parse,
+                    "error parsing log level: {}",
+                    level
+                ));
             }
 
             let key = parts[0].to_owned();
@@ -196,7 +206,7 @@ impl FromStr for LogLevel {
 
             if levels.insert(key, value).is_some() {
                 return Err(err!(
-                    ErrorKind::Parse,
+                    error::Kind::Parse,
                     "duplicate log level setting for: {}",
                     level
                 ));
@@ -260,7 +270,7 @@ pub enum AbciMode {
 
 /// Tendermint `config.toml` file's `[rpc]` section
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RpcConfig {
+pub struct Rpc {
     /// TCP or UNIX socket address for the RPC server to listen on
     pub laddr: net::Address,
 
@@ -363,7 +373,7 @@ impl fmt::Display for CorsHeader {
 
 /// peer to peer configuration options
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct P2PConfig {
+pub struct P2P {
     /// Address to listen for incoming connections
     pub laddr: net::Address,
 
@@ -444,7 +454,7 @@ pub struct P2PConfig {
 
 /// mempool configuration options
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct MempoolConfig {
+pub struct Mempool {
     /// Recheck enabled
     pub recheck: bool,
 
@@ -469,7 +479,7 @@ pub struct MempoolConfig {
 
 /// consensus configuration options
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ConsensusConfig {
+pub struct Consensus {
     /// Path to WAL file
     pub wal_file: PathBuf,
 
@@ -512,7 +522,7 @@ pub struct ConsensusConfig {
 
 /// transactions indexer configuration options
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct TxIndexConfig {
+pub struct TxIndex {
     /// What indexer to use for transactions
     #[serde(default)]
     pub indexer: TxIndexer,
@@ -552,7 +562,7 @@ impl Default for TxIndexer {
 
 /// instrumentation configuration options
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct InstrumentationConfig {
+pub struct Instrumentation {
     /// When `true`, Prometheus metrics are served under /metrics on
     /// PrometheusListenAddr.
     pub prometheus: bool,

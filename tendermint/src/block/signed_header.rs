@@ -1,7 +1,7 @@
 //! SignedHeader contains commit and and block header.
 //! It is what the rpc endpoint /commit returns and hence can be used by a
 //! light client.
-use crate::{block, hash, lite, lite::Error, validator::Set, vote::SignedVote};
+use crate::{block, hash, lite, lite::Error, validator::Set, vote::Signed as SignedVote};
 use serde::{Deserialize, Serialize};
 
 /// Signed block headers
