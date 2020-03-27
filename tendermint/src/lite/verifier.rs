@@ -142,7 +142,7 @@ pub fn verify_commit_trusting(
 // If trusted_state is not expired and this returns Ok, the
 // untrusted_sh and untrusted_next_vals can be considered trusted.
 fn verify_single_inner(
-    trusted_state: &TrustedState,
+    trusted_state: &TrustedState<LightCommit, LightHeader>,
     untrusted_sh: &SignedHeader<LightCommit, LightHeader>,
     untrusted_vals: &LightValidatorSet,
     untrusted_next_vals: &LightValidatorSet,
@@ -208,14 +208,14 @@ fn verify_single_inner(
 ///
 /// This function is primarily for use by IBC handlers.
 pub fn verify_single(
-    trusted_state: TrustedState,
+    trusted_state: TrustedState<LightCommit, LightHeader>,
     untrusted_sh: &SignedHeader<LightCommit, LightHeader>,
     untrusted_vals: &LightValidatorSet,
     untrusted_next_vals: &LightValidatorSet,
     trust_threshold: impl TrustThreshold,
     trusting_period: Duration,
     now: SystemTime,
-) -> Result<TrustedState, Error> {
+) -> Result<TrustedState<LightCommit, LightHeader>, Error> {
     // Fetch the latest state and ensure it hasn't expired.
     let trusted_sh = trusted_state.last_header();
     is_within_trust_period(trusted_sh.header(), trusting_period, now)?;
@@ -258,13 +258,13 @@ pub fn verify_single(
 ///
 /// This function is primarily for use by a light node.
 pub async fn verify_bisection(
-    trusted_state: TrustedState,
+    trusted_state: TrustedState<LightCommit, LightHeader>,
     untrusted_height: Height,
     trust_threshold: impl TrustThreshold,
     trusting_period: Duration,
     now: SystemTime,
-    req: &impl Requester,
-) -> Result<Vec<TrustedState>, Error> {
+    req: &impl Requester<LightCommit, LightHeader>,
+) -> Result<Vec<TrustedState<LightCommit, LightHeader>>, Error> {
     // Ensure the latest state hasn't expired.
     // Note we only check for expiry once in this
     // verify_and_update_bisection function since we assume the
@@ -287,7 +287,7 @@ pub async fn verify_bisection(
     // So every header we fetch must be checked to be less than now+X
 
     // this is only used to memoize intermediate trusted states:
-    let mut cache: Vec<TrustedState> = Vec::new();
+    let mut cache: Vec<TrustedState<LightCommit, LightHeader>> = Vec::new();
 
     // inner recursive function which assumes
     // trusting_period check is already done.
@@ -312,12 +312,12 @@ pub async fn verify_bisection(
 // Additionally, a new state is returned for convenience s.t. it can
 // be used for the other half of the recursion.
 fn verify_bisection_inner<'a>(
-    trusted_state: &'a TrustedState,
+    trusted_state: &'a TrustedState<LightCommit, LightHeader>,
     untrusted_height: Height,
     trust_threshold: impl TrustThreshold + 'a,
-    req: &'a impl Requester,
-    mut cache: &'a mut Vec<TrustedState>,
-) -> LocalBoxFuture<'a, Result<TrustedState, Error>> {
+    req: &'a impl Requester<LightCommit, LightHeader>,
+    mut cache: &'a mut Vec<TrustedState<LightCommit, LightHeader>>,
+) -> LocalBoxFuture<'a, Result<TrustedState<LightCommit, LightHeader>, Error>> {
     async move {
         // fetch the header and vals for the new height
         let untrusted_sh = req.signed_header(untrusted_height).await?;

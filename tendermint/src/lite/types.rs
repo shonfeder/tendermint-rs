@@ -165,12 +165,9 @@ impl Default for TrustThresholdFraction {
 /// Requester can be used to request [`SignedHeader`]s and [`ValidatorSet`]s for a
 /// given height, e.g., by talking to a tendermint fullnode through RPC.
 #[async_trait]
-pub trait Requester {
+pub trait Requester<C, H> {
     /// Request the [`SignedHeader`] at height h.
-    async fn signed_header(
-        &self,
-        h: Height,
-    ) -> Result<SignedHeader<LightCommit, LightHeader>, Error>;
+    async fn signed_header(&self, h: Height) -> Result<SignedHeader<C, H>, Error>;
 
     /// Request the validator set at height h.
     async fn validator_set(&self, h: Height) -> Result<LightValidatorSet, Error>;
@@ -185,26 +182,27 @@ pub trait Requester {
 /// the proper bound when associated types are involved.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 // #[serde(bound(deserialize = "C::ValidatorSet: Deserialize<'de>"))]
-pub struct TrustedState {
-    last_header: SignedHeader<LightCommit, LightHeader>, // height H-1
-    validators: LightValidatorSet,                       // height H
+pub struct TrustedState<C, H> {
+    last_header: SignedHeader<C, H>, // height H-1
+    validators: LightValidatorSet,   // height H
 }
 
-impl TrustedState {
+impl<C, H> TrustedState<C, H>
+where
+    C: Into<LightCommit>,
+    H: Into<LightHeader>,
+{
     /// Initialize the TrustedState with the given signed header and validator set.
     /// Note that if the height of the passed in header is h-1, the passed in validator set
     /// must have been requested for height h.
-    pub fn new(
-        last_header: SignedHeader<LightCommit, LightHeader>,
-        validators: LightValidatorSet,
-    ) -> Self {
+    pub fn new(last_header: SignedHeader<C, H>, validators: LightValidatorSet) -> Self {
         Self {
             last_header,
             validators,
         }
     }
 
-    pub fn last_header(&self) -> &SignedHeader<LightCommit, LightHeader> {
+    pub fn last_header(&self) -> &SignedHeader<C, H> {
         &self.last_header
     }
 
@@ -239,9 +237,10 @@ pub(super) mod mocks {
     use anomaly::fail;
     use serde::Serialize;
     use sha2::{Digest, Sha256};
+    use std::time::SystemTime;
 
     use super::*;
-    use crate::{hash::Algorithm, Hash};
+    use crate::{hash::Algorithm, lite, Hash};
 
     use std::collections::HashMap;
 
@@ -268,23 +267,17 @@ pub(super) mod mocks {
         }
     }
 
-    impl Header for MockHeader {
-        type Time = SystemTime;
+    impl From<MockHeader> for LightHeader {
+        fn from(mh: MockHeader) -> Self {
+            let hash = json_hash(&mh);
 
-        fn height(&self) -> Height {
-            self.height
-        }
-        fn bft_time(&self) -> Self::Time {
-            self.time
-        }
-        fn validators_hash(&self) -> Hash {
-            self.vals
-        }
-        fn next_validators_hash(&self) -> Hash {
-            self.next_vals
-        }
-        fn hash(&self) -> Hash {
-            json_hash(self)
+            Self {
+                height: mh.height,
+                bft_time: mh.time,
+                validators_hash: mh.vals,
+                next_validators_hash: mh.next_vals,
+                hash,
+            }
         }
     }
 
@@ -307,12 +300,12 @@ pub(super) mod mocks {
         }
     }
 
-    impl ValidatorSet for MockValSet {
-        fn hash(&self) -> Hash {
-            json_hash(&self)
-        }
-        fn total_power(&self) -> u64 {
-            self.vals.len() as u64
+    impl From<MockValSet> for LightValidatorSet {
+        fn from(mvs: MockValSet) -> Self {
+            Self {
+                hash: json_hash(&mvs),
+                total_power: mvs.vals.len() as u64,
+            }
         }
     }
 
@@ -328,39 +321,40 @@ pub(super) mod mocks {
             MockCommit { hash, vals }
         }
     }
-    impl Commit for MockCommit {
-        type ValidatorSet = MockValSet;
 
-        fn header_hash(&self) -> Hash {
-            self.hash
-        }
-
-        // just the intersection
-        fn voting_power_in(&self, vals: &Self::ValidatorSet) -> Result<u64, Error> {
-            let mut power = 0;
-            // if there's a signer thats not in the val set,
-            // we can't detect it...
-            for signer in self.vals.iter() {
-                for val in vals.vals.iter() {
-                    if signer == val {
-                        power += 1
-                    }
-                }
+    impl From<MockCommit> for LightCommit {
+        fn from(mc: MockCommit) -> Self {
+            Self {
+                header_hash: mc.hash,
             }
-            Ok(power)
-        }
-
-        fn validate(&self, _vals: &Self::ValidatorSet) -> Result<(), Error> {
-            // some implementation specific checks:
-            if self.vals.is_empty() || self.hash.algorithm() != Algorithm::Sha256 {
-                fail!(
-                    Kind::ImplementationSpecific,
-                    "validator set is empty, or, invalid hash algo"
-                );
-            }
-            Ok(())
         }
     }
+
+    // // just the intersection
+    // fn voting_power_in(&self, vals: &Self::ValidatorSet) -> Result<u64, Error> {
+    //     let mut power = 0;
+    //     // if there's a signer thats not in the val set,
+    //     // we can't detect it...
+    //     for signer in self.vals.iter() {
+    //         for val in vals.vals.iter() {
+    //             if signer == val {
+    //                 power += 1
+    //             }
+    //         }
+    //     }
+    //     Ok(power)
+    // }
+
+    // fn validate(&self, _vals: &Self::ValidatorSet) -> Result<(), Error> {
+    //     // some implementation specific checks:
+    //     if self.vals.is_empty() || self.hash.algorithm() != Algorithm::Sha256 {
+    //         fail!(
+    //             Kind::ImplementationSpecific,
+    //             "validator set is empty, or, invalid hash algo"
+    //         );
+    //     }
+    //     Ok(())
+    // }
 
     pub type MockSignedHeader = SignedHeader<MockCommit, MockHeader>;
     pub type MockTrustedState = TrustedState<MockCommit, MockHeader>;
