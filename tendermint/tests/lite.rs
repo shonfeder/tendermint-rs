@@ -8,7 +8,10 @@ use std::{fs, path::PathBuf};
 use tendermint::block::{Header, Height};
 use tendermint::lite::error::{Error, Kind};
 use tendermint::lite::{Requester, TrustThresholdFraction, TrustedState};
-use tendermint::{block::signed_header::SignedHeader, lite, validator::Set, Hash, Time};
+use tendermint::{
+    block::signed_header::SignedHeader, lite, lite_impl::ops::LightImplOps, validator::Set, Hash,
+    Time,
+};
 
 #[derive(Clone, Debug)]
 struct Duration(u64);
@@ -192,9 +195,10 @@ fn run_test_cases(cases: TestCases) {
                 &untrusted_signed_header.into(),
                 untrusted_vals,
                 untrusted_next_vals,
-                TrustThresholdFraction::default(),
+                &TrustThresholdFraction::default(),
                 trusting_period,
                 now,
+                &LightImplOps,
             ) {
                 Ok(new_state) => {
                     let expected_state = TrustedState::new(
@@ -255,10 +259,11 @@ async fn run_bisection_test(case: TestBisection) {
     match lite::verify_bisection(
         trusted_state,
         untrusted_height,
-        trust_threshold,
+        &trust_threshold,
         trusting_period.into(),
         now.into(),
         &req,
+        &LightImplOps,
     )
     .await
     {

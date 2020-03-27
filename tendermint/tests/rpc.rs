@@ -3,7 +3,8 @@
 mod endpoints {
     use std::{fs, path::PathBuf};
     use tendermint::abci::Code;
-    use tendermint::lite::Header;
+    use tendermint::lite::types::LightOperations;
+    use tendermint::lite_impl::ops::LightImplOps;
     use tendermint::rpc::{self, endpoint, Response};
 
     const EXAMPLE_APP: &str = "GaiaApp";
@@ -209,7 +210,7 @@ mod endpoints {
         let commit = response.signed_header.commit;
         let block_id = commit.block_id;
         let _precommits = commit.precommits;
-        assert_eq!(header.hash(), block_id.hash);
+        assert_eq!(LightImplOps.hash(&header), block_id.hash);
     }
 
     #[test]

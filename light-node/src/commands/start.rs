@@ -18,7 +18,7 @@ use crate::store::{MemStore, State};
 use abscissa_core::{config, Command, FrameworkError, Options, Runnable};
 use std::process;
 use std::time::{Duration, SystemTime};
-use tendermint::lite::error::Error;
+use tendermint::{lite::error::Error, lite_impl::ops::LightImplOps};
 
 /// `start` subcommand
 ///
@@ -78,10 +78,11 @@ impl Runnable for StartCmd {
                 lite::verify_bisection(
                     latest_trusted.to_owned(),
                     latest_peer_height,
-                    TrustThresholdFraction::default(), // TODO
+                    &TrustThresholdFraction::default(), // TODO
                     config.trusting_period,
                     now,
                     &req,
+                    &LightImplOps,
                 )
                 .await
                 .unwrap();

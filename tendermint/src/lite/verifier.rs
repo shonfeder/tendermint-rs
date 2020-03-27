@@ -13,7 +13,8 @@ use std::time::{Duration, SystemTime};
 
 use crate::lite::error::{Error, Kind};
 use crate::lite::{
-    Commit, Header, Height, Requester, SignedHeader, TrustThreshold, TrustedState, ValidatorSet,
+    Commit, Header, Height, LightOperations, Requester, SignedHeader, TrustThreshold, TrustedState,
+    ValidatorSet,
 };
 use anomaly::ensure;
 use futures::future::{FutureExt, LocalBoxFuture};
@@ -56,6 +57,7 @@ pub fn validate<C, H>(
     signed_header: &SignedHeader<C, H>,
     vals: &C::ValidatorSet,
     next_vals: &C::ValidatorSet,
+    ops: &impl LightOperations<C, H>,
 ) -> Result<(), Error>
 where
     C: Commit,
@@ -81,16 +83,16 @@ where
     }
 
     // ensure the header matches the commit
-    if header.hash() != commit.header_hash() {
+    if ops.hash(header) != commit.header_hash() {
         return Err(Kind::InvalidCommitValue {
-            header_hash: header.hash(),
+            header_hash: ops.hash(header),
             commit_hash: commit.header_hash(),
         }
         .into());
     }
 
     // additional implementation specific validation:
-    commit.validate(vals)?;
+    ops.validate(commit, vals)?;
 
     Ok(())
 }
@@ -99,12 +101,17 @@ where
 /// NOTE: These validators are expected to be the correct validators for the commit,
 /// but since we're using voting_power_in, we can't actually detect if there's
 /// votes from validators not in the set.
-pub fn verify_commit_full<C>(vals: &C::ValidatorSet, commit: &C) -> Result<(), Error>
+pub fn verify_commit_full<C, H>(
+    vals: &C::ValidatorSet,
+    commit: &C,
+    ops: &impl LightOperations<C, H>,
+) -> Result<(), Error>
 where
     C: Commit,
+    H: Header,
 {
     let total_power = vals.total_power();
-    let signed_power = commit.voting_power_in(vals)?;
+    let signed_power = ops.voting_power_in(commit, vals)?;
 
     // check the signers account for +2/3 of the voting power
     if signed_power * 3 <= total_power * 2 {
@@ -122,17 +129,18 @@ where
 /// NOTE the given validators do not necessarily correspond to the validator set for this commit,
 /// but there may be some intersection. The trust_level parameter allows clients to require more
 /// than +1/3 by implementing the TrustLevel trait accordingly.
-pub fn verify_commit_trusting<C, L>(
+pub fn verify_commit_trusting<C, H>(
     validators: &C::ValidatorSet,
     commit: &C,
-    trust_level: L,
+    trust_level: &impl TrustThreshold,
+    ops: &impl LightOperations<C, H>,
 ) -> Result<(), Error>
 where
     C: Commit,
-    L: TrustThreshold,
+    H: Header,
 {
     let total_power = validators.total_power();
-    let signed_power = commit.voting_power_in(validators)?;
+    let signed_power = ops.voting_power_in(commit, validators)?;
 
     // check the signers account for +1/3 of the voting power (or more if the
     // trust_level requires so)
@@ -154,23 +162,23 @@ where
 // and hence it's possible to use it incorrectly.
 // If trusted_state is not expired and this returns Ok, the
 // untrusted_sh and untrusted_next_vals can be considered trusted.
-fn verify_single_inner<H, C, L>(
+fn verify_single_inner<H, C>(
     trusted_state: &TrustedState<C, H>,
     untrusted_sh: &SignedHeader<C, H>,
     untrusted_vals: &C::ValidatorSet,
     untrusted_next_vals: &C::ValidatorSet,
-    trust_threshold: L,
+    trust_threshold: &impl TrustThreshold,
+    ops: &impl LightOperations<C, H>,
 ) -> Result<(), Error>
 where
     H: Header,
     C: Commit,
-    L: TrustThreshold,
 {
     // validate the untrusted header against its commit, vals, and next_vals
     let untrusted_header = untrusted_sh.header();
     let untrusted_commit = untrusted_sh.commit();
 
-    validate(untrusted_sh, untrusted_vals, untrusted_next_vals)?;
+    validate(untrusted_sh, untrusted_vals, untrusted_next_vals, ops)?;
 
     // ensure the new height is higher.
     // if its +1, ensure the vals are correct.
@@ -208,12 +216,12 @@ where
         }
         Ordering::Greater => {
             let trusted_vals = trusted_state.validators();
-            verify_commit_trusting(trusted_vals, untrusted_commit, trust_threshold)?;
+            verify_commit_trusting(trusted_vals, untrusted_commit, trust_threshold, ops)?;
         }
     }
 
     // All validation passed successfully. Verify the validators correctly committed the block.
-    verify_commit_full(untrusted_vals, untrusted_sh.commit())
+    verify_commit_full(untrusted_vals, untrusted_sh.commit(), ops)
 }
 
 /// Verify a single untrusted header against a trusted state.
@@ -225,19 +233,19 @@ where
 /// header to be trusted.
 ///
 /// This function is primarily for use by IBC handlers.
-pub fn verify_single<H, C, L>(
+pub fn verify_single<H, C>(
     trusted_state: TrustedState<C, H>,
     untrusted_sh: &SignedHeader<C, H>,
     untrusted_vals: &C::ValidatorSet,
     untrusted_next_vals: &C::ValidatorSet,
-    trust_threshold: L,
+    trust_threshold: &impl TrustThreshold,
     trusting_period: Duration,
     now: SystemTime,
+    ops: &impl LightOperations<C, H>,
 ) -> Result<TrustedState<C, H>, Error>
 where
     H: Header,
     C: Commit,
-    L: TrustThreshold,
 {
     // Fetch the latest state and ensure it hasn't expired.
     let trusted_sh = trusted_state.last_header();
@@ -249,6 +257,7 @@ where
         untrusted_vals,
         untrusted_next_vals,
         trust_threshold,
+        ops,
     )?;
 
     // The untrusted header is now trusted;
@@ -280,19 +289,18 @@ where
 /// data from intermediate heights.
 ///
 /// This function is primarily for use by a light node.
-pub async fn verify_bisection<C, H, L, R>(
+pub async fn verify_bisection<C, H>(
     trusted_state: TrustedState<C, H>,
     untrusted_height: Height,
-    trust_threshold: L,
+    trust_threshold: &impl TrustThreshold,
     trusting_period: Duration,
     now: SystemTime,
-    req: &R,
+    req: &impl Requester<C, H>,
+    ops: &impl LightOperations<C, H>,
 ) -> Result<Vec<TrustedState<C, H>>, Error>
 where
     H: Header,
     C: Commit,
-    L: TrustThreshold,
-    R: Requester<C, H>,
 {
     // Ensure the latest state hasn't expired.
     // Note we only check for expiry once in this
@@ -326,6 +334,7 @@ where
         trust_threshold,
         req,
         &mut cache,
+        ops,
     )
     .await?;
 
@@ -340,18 +349,17 @@ where
 // not store states twice.
 // Additionally, a new state is returned for convenience s.t. it can
 // be used for the other half of the recursion.
-fn verify_bisection_inner<'a, H, C, L, R>(
+fn verify_bisection_inner<'a, H, C>(
     trusted_state: &'a TrustedState<C, H>,
     untrusted_height: Height,
-    trust_threshold: L,
-    req: &'a R,
+    trust_threshold: &'a impl TrustThreshold,
+    req: &'a impl Requester<C, H>,
     mut cache: &'a mut Vec<TrustedState<C, H>>,
+    ops: &'a impl LightOperations<C, H>,
 ) -> LocalBoxFuture<'a, Result<TrustedState<C, H>, Error>>
 where
     H: Header,
     C: Commit,
-    L: TrustThreshold + 'a,
-    R: Requester<C, H>,
 {
     async move {
         // fetch the header and vals for the new height
@@ -368,6 +376,7 @@ where
             &untrusted_vals,
             &untrusted_next_vals,
             trust_threshold,
+            ops,
         ) {
             Ok(_) => {
                 // Successfully verified!
@@ -401,6 +410,7 @@ where
             trust_threshold,
             req,
             &mut cache,
+            ops,
         )
         .await?;
 
@@ -411,6 +421,7 @@ where
             trust_threshold,
             req,
             &mut cache,
+            ops,
         )
         .await
     }
@@ -507,7 +518,8 @@ mod tests {
             &un_sh,
             &un_vals,
             &un_next_vals,
-            TrustThresholdFraction::default(),
+            &TrustThresholdFraction::default(),
+            &MockOps,
         );
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), err.to_string());
@@ -521,7 +533,8 @@ mod tests {
             &un_sh,
             &un_vals,
             &un_next_vals,
-            TrustThresholdFraction::default()
+            &TrustThresholdFraction::default(),
+            &MockOps,
         )
         .is_ok());
     }
@@ -539,9 +552,10 @@ mod tests {
         let ts_new = verify_bisection_inner(
             &ts,
             untrusted_height,
-            TrustThresholdFraction::default(),
+            &TrustThresholdFraction::default(),
             req,
             cache.as_mut(),
+            &MockOps,
         )
         .await
         .expect("should have passed");
@@ -569,9 +583,10 @@ mod tests {
         let result = verify_bisection_inner(
             &ts,
             untrusted_height,
-            TrustThresholdFraction::default(),
+            &TrustThresholdFraction::default(),
             req,
             cache.as_mut(),
+            &MockOps,
         )
         .await;
         assert!(result.is_err());

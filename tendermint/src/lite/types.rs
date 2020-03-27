@@ -12,6 +12,38 @@ use crate::Hash;
 
 pub type Height = u64;
 
+pub trait LightOperations<C, H>
+where
+    H: Header,
+    C: Commit,
+{
+    /// Hash of the header (ie. the hash of the block).
+    fn hash(&self, header: &H) -> Hash;
+
+    /// Compute the voting power of the validators that correctly signed the commit,
+    /// according to their voting power in the passed in validator set.
+    /// Will return an error in case an invalid signature was included.
+    /// TODO/XXX: This cannot detect if a signature from an incorrect validator
+    /// is included. That's fine when we're just trying to see if we can skip,
+    /// but when actually verifying it means we might accept commits that have sigs from
+    /// outside the correct validator set, which is something we expect to be able to detect
+    /// (it's not a real issue, but it would indicate a faulty full node).
+    ///
+    ///
+    /// This method corresponds to the (pure) auxiliary function in the spec:
+    /// `votingpower_in(signers(h.Commit),h.Header.V)`.
+    /// Note this expects the Commit to be able to compute `signers(h.Commit)`,
+    /// ie. the identity of the validators that signed it, so they
+    /// can be cross-referenced with the given `vals`.
+    fn voting_power_in(&self, commit: &C, vals: &C::ValidatorSet) -> Result<u64, Error>;
+
+    /// Implementers should add addition validation against the given validator set
+    /// or other implementation specific validation here.
+    /// E.g. validate that the length of the included signatures in the commit match
+    /// with the number of validators.
+    fn validate(&self, commit: &C, vals: &C::ValidatorSet) -> Result<(), Error>;
+}
+
 /// Header contains meta data about the block -
 /// the height, the time, the hash of the validator set
 /// that should sign this header, and the hash of the validator
@@ -25,9 +57,6 @@ pub trait Header: Clone + Debug + Serialize + DeserializeOwned {
     fn bft_time(&self) -> Self::Time;
     fn validators_hash(&self) -> Hash;
     fn next_validators_hash(&self) -> Hash;
-
-    /// Hash of the header (ie. the hash of the block).
-    fn hash(&self) -> Hash;
 }
 
 /// ValidatorSet is the full validator set.
@@ -48,29 +77,6 @@ pub trait Commit: Clone + Debug + Serialize + DeserializeOwned {
 
     /// Hash of the header this commit is for.
     fn header_hash(&self) -> Hash;
-
-    /// Compute the voting power of the validators that correctly signed the commit,
-    /// according to their voting power in the passed in validator set.
-    /// Will return an error in case an invalid signature was included.
-    /// TODO/XXX: This cannot detect if a signature from an incorrect validator
-    /// is included. That's fine when we're just trying to see if we can skip,
-    /// but when actually verifying it means we might accept commits that have sigs from
-    /// outside the correct validator set, which is something we expect to be able to detect
-    /// (it's not a real issue, but it would indicate a faulty full node).
-    ///
-    ///
-    /// This method corresponds to the (pure) auxiliary function in the spec:
-    /// `votingpower_in(signers(h.Commit),h.Header.V)`.
-    /// Note this expects the Commit to be able to compute `signers(h.Commit)`,
-    /// ie. the identity of the validators that signed it, so they
-    /// can be cross-referenced with the given `vals`.
-    fn voting_power_in(&self, vals: &Self::ValidatorSet) -> Result<u64, Error>;
-
-    /// Implementers should add addition validation against the given validator set
-    /// or other implementation specific validation here.
-    /// E.g. validate that the length of the included signatures in the commit match
-    /// with the number of validators.
-    fn validate(&self, vals: &Self::ValidatorSet) -> Result<(), Error>;
 }
 
 /// TrustThreshold defines how much of the total voting power of a known
@@ -220,6 +226,40 @@ pub(super) mod mocks {
 
     use std::collections::HashMap;
 
+    pub struct MockOps;
+
+    impl LightOperations<MockCommit, MockHeader> for MockOps {
+        fn hash(&self, header: &MockHeader) -> Hash {
+            json_hash(header)
+        }
+
+        // Just the intersection
+        fn voting_power_in(&self, commit: &MockCommit, vals: &MockValSet) -> Result<u64, Error> {
+            let mut power = 0;
+            // if there's a signer thats not in the val set,
+            // we can't detect it...
+            for signer in commit.vals.iter() {
+                for val in vals.vals.iter() {
+                    if signer == val {
+                        power += 1
+                    }
+                }
+            }
+            Ok(power)
+        }
+
+        fn validate(&self, commit: &MockCommit, _vals: &MockValSet) -> Result<(), Error> {
+            // some implementation specific checks:
+            if commit.vals.is_empty() || commit.hash.algorithm() != Algorithm::Sha256 {
+                fail!(
+                    Kind::ImplementationSpecific,
+                    "validator set is empty, or, invalid hash algo"
+                );
+            }
+            Ok(())
+        }
+    }
+
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     pub struct MockHeader {
         height: u64,
@@ -236,6 +276,10 @@ pub(super) mod mocks {
                 vals,
                 next_vals,
             }
+        }
+
+        pub fn hash(&self) -> Hash {
+            MockOps.hash(self)
         }
 
         pub fn set_time(&mut self, new_time: SystemTime) {
@@ -257,9 +301,6 @@ pub(super) mod mocks {
         }
         fn next_validators_hash(&self) -> Hash {
             self.next_vals
-        }
-        fn hash(&self) -> Hash {
-            json_hash(self)
         }
     }
 
@@ -302,38 +343,21 @@ pub(super) mod mocks {
         pub fn new(hash: Hash, vals: Vec<usize>) -> MockCommit {
             MockCommit { hash, vals }
         }
+
+        pub fn voting_power_in(&self, vals: &MockValSet) -> Result<u64, Error> {
+            MockOps.voting_power_in(self, vals)
+        }
+
+        pub fn validate(&self, vals: &MockValSet) -> Result<(), Error> {
+            MockOps.validate(self, vals)
+        }
     }
+
     impl Commit for MockCommit {
         type ValidatorSet = MockValSet;
 
         fn header_hash(&self) -> Hash {
             self.hash
-        }
-
-        // just the intersection
-        fn voting_power_in(&self, vals: &Self::ValidatorSet) -> Result<u64, Error> {
-            let mut power = 0;
-            // if there's a signer thats not in the val set,
-            // we can't detect it...
-            for signer in self.vals.iter() {
-                for val in vals.vals.iter() {
-                    if signer == val {
-                        power += 1
-                    }
-                }
-            }
-            Ok(power)
-        }
-
-        fn validate(&self, _vals: &Self::ValidatorSet) -> Result<(), Error> {
-            // some implementation specific checks:
-            if self.vals.is_empty() || self.hash.algorithm() != Algorithm::Sha256 {
-                fail!(
-                    Kind::ImplementationSpecific,
-                    "validator set is empty, or, invalid hash algo"
-                );
-            }
-            Ok(())
         }
     }
 
