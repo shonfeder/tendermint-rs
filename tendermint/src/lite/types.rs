@@ -2,13 +2,12 @@
 //! verification logic in [`super::verifier`] for a light client.
 
 use std::fmt::Debug;
-use std::time::SystemTime;
 
 use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::lite::error::{Error, Kind};
-use crate::Hash;
+use crate::{Hash, Time};
 
 pub type Height = u64;
 
@@ -16,38 +15,71 @@ pub type Height = u64;
 /// the height, the time, the hash of the validator set
 /// that should sign this header, and the hash of the validator
 /// set that should sign the next header.
-pub trait Header: Clone + Debug + Serialize + DeserializeOwned {
-    /// The header's notion of (bft-)time.
-    /// We assume it can be converted to SystemTime.
-    type Time: Into<SystemTime>;
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LightHeader {
+    pub height: Height,
+    pub bft_time: Time,
+    pub validators_hash: Hash,
+    pub next_validators_hash: Hash,
+    pub hash: Hash,
+}
 
-    fn height(&self) -> Height;
-    fn bft_time(&self) -> Self::Time;
-    fn validators_hash(&self) -> Hash;
-    fn next_validators_hash(&self) -> Hash;
+impl LightHeader {
+    pub fn height(&self) -> Height {
+        self.height
+    }
+
+    pub fn bft_time(&self) -> Time {
+        self.bft_time
+    }
+
+    pub fn validators_hash(&self) -> Hash {
+        self.validators_hash
+    }
+
+    pub fn next_validators_hash(&self) -> Hash {
+        self.next_validators_hash
+    }
 
     /// Hash of the header (ie. the hash of the block).
-    fn hash(&self) -> Hash;
+    pub fn hash(&self) -> Hash {
+        self.hash
+    }
 }
 
 /// ValidatorSet is the full validator set.
 /// It exposes its hash and its total power.
-pub trait ValidatorSet: Clone + Debug + Serialize + DeserializeOwned {
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LightValidatorSet {
+    pub hash: Hash,
+    pub total_power: u64,
+}
+
+impl LightValidatorSet {
     /// Hash of the validator set.
-    fn hash(&self) -> Hash;
+    pub fn hash(&self) -> Hash {
+        self.hash
+    }
 
     /// Total voting power of the set
-    fn total_power(&self) -> u64;
+    pub fn total_power(&self) -> u64 {
+        self.total_power
+    }
 }
 
 /// Commit is used to prove a Header can be trusted.
 /// Verifying the Commit requires access to an associated ValidatorSet
 /// to determine what voting power signed the commit.
-pub trait Commit: Clone + Debug + Serialize + DeserializeOwned {
-    type ValidatorSet: ValidatorSet;
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LightCommit {
+    pub header_hash: Hash,
+}
 
+impl LightCommit {
     /// Hash of the header this commit is for.
-    fn header_hash(&self) -> Hash;
+    pub fn header_hash(&self) -> Hash {
+        self.header_hash
+    }
 
     /// Compute the voting power of the validators that correctly signed the commit,
     /// according to their voting power in the passed in validator set.
@@ -64,20 +96,17 @@ pub trait Commit: Clone + Debug + Serialize + DeserializeOwned {
     /// Note this expects the Commit to be able to compute `signers(h.Commit)`,
     /// ie. the identity of the validators that signed it, so they
     /// can be cross-referenced with the given `vals`.
-    fn voting_power_in(&self, vals: &Self::ValidatorSet) -> Result<u64, Error>;
+    pub fn voting_power_in(&self, vals: &LightValidatorSet) -> Result<u64, Error> {
+        todo!()
+    }
 
     /// Implementers should add addition validation against the given validator set
     /// or other implementation specific validation here.
     /// E.g. validate that the length of the included signatures in the commit match
     /// with the number of validators.
-    fn validate(&self, vals: &Self::ValidatorSet) -> Result<(), Error>;
-}
-
-/// TrustThreshold defines how much of the total voting power of a known
-/// and trusted validator set is sufficient for a commit to be
-/// accepted going forward.
-pub trait TrustThreshold: Copy + Clone + Debug + Serialize + DeserializeOwned {
-    fn is_enough_power(&self, signed_voting_power: u64, total_voting_power: u64) -> bool;
+    pub fn validate(&self, vals: &LightValidatorSet) -> Result<(), Error> {
+        todo!()
+    }
 }
 
 /// TrustThresholdFraction defines what fraction of the total voting power of a known
@@ -87,7 +116,7 @@ pub trait TrustThreshold: Copy + Clone + Debug + Serialize + DeserializeOwned {
 /// voting power signed (in other words at least one honest validator signed).
 /// Some clients might require more than +1/3 and can implement their own
 /// [`TrustThreshold`] which can be passed into all relevant methods.
-#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TrustThresholdFraction {
     numerator: u64,
     denominator: u64,
@@ -113,6 +142,13 @@ impl TrustThresholdFraction {
     }
 }
 
+/// TrustThreshold defines how much of the total voting power of a known
+/// and trusted validator set is sufficient for a commit to be
+/// accepted going forward.
+pub trait TrustThreshold: Copy + Clone + Debug + Serialize + DeserializeOwned {
+    fn is_enough_power(&self, signed_voting_power: u64, total_voting_power: u64) -> bool;
+}
+
 // TODO: should this go in the central place all impls live instead? (currently lite_impl)
 impl TrustThreshold for TrustThresholdFraction {
     fn is_enough_power(&self, signed_voting_power: u64, total_voting_power: u64) -> bool {
@@ -122,24 +158,22 @@ impl TrustThreshold for TrustThresholdFraction {
 
 impl Default for TrustThresholdFraction {
     fn default() -> Self {
-        Self::new(1, 3)
-            .expect("initializing TrustThresholdFraction with valid fraction mustn't panic")
+        Self::new(1, 3).expect("initializing TrustThreshold with valid fraction mustn't panic")
     }
 }
 
 /// Requester can be used to request [`SignedHeader`]s and [`ValidatorSet`]s for a
 /// given height, e.g., by talking to a tendermint fullnode through RPC.
 #[async_trait]
-pub trait Requester<C, H>
-where
-    C: Commit,
-    H: Header,
-{
+pub trait Requester {
     /// Request the [`SignedHeader`] at height h.
-    async fn signed_header(&self, h: Height) -> Result<SignedHeader<C, H>, Error>;
+    async fn signed_header(
+        &self,
+        h: Height,
+    ) -> Result<SignedHeader<LightCommit, LightHeader>, Error>;
 
     /// Request the validator set at height h.
-    async fn validator_set(&self, h: Height) -> Result<C::ValidatorSet, Error>;
+    async fn validator_set(&self, h: Height) -> Result<LightValidatorSet, Error>;
 }
 
 /// TrustedState contains a state trusted by a lite client,
@@ -149,53 +183,44 @@ where
 /// **Note:** The `#[serde(bound = ...)]` attribute is required to
 /// derive `Deserialize` for this struct as Serde is not able to infer
 /// the proper bound when associated types are involved.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(bound(deserialize = "C::ValidatorSet: Deserialize<'de>"))]
-pub struct TrustedState<C, H>
-where
-    H: Header,
-    C: Commit,
-{
-    last_header: SignedHeader<C, H>, // height H-1
-    validators: C::ValidatorSet,     // height H
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+// #[serde(bound(deserialize = "C::ValidatorSet: Deserialize<'de>"))]
+pub struct TrustedState {
+    last_header: SignedHeader<LightCommit, LightHeader>, // height H-1
+    validators: LightValidatorSet,                       // height H
 }
 
-impl<C, H> TrustedState<C, H>
-where
-    H: Header,
-    C: Commit,
-{
+impl TrustedState {
     /// Initialize the TrustedState with the given signed header and validator set.
     /// Note that if the height of the passed in header is h-1, the passed in validator set
     /// must have been requested for height h.
-    pub fn new(last_header: SignedHeader<C, H>, validators: C::ValidatorSet) -> Self {
+    pub fn new(
+        last_header: SignedHeader<LightCommit, LightHeader>,
+        validators: LightValidatorSet,
+    ) -> Self {
         Self {
             last_header,
             validators,
         }
     }
 
-    pub fn last_header(&self) -> &SignedHeader<C, H> {
+    pub fn last_header(&self) -> &SignedHeader<LightCommit, LightHeader> {
         &self.last_header
     }
 
-    pub fn validators(&self) -> &C::ValidatorSet {
+    pub fn validators(&self) -> &LightValidatorSet {
         &self.validators
     }
 }
 
 /// SignedHeader bundles a [`Header`] and a [`Commit`] for convenience.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignedHeader<C, H> {
     commit: C,
     header: H,
 }
 
-impl<C, H> SignedHeader<C, H>
-where
-    C: Commit,
-    H: Header,
-{
+impl<C, H> SignedHeader<C, H> {
     pub fn new(commit: C, header: H) -> Self {
         Self { commit, header }
     }

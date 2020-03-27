@@ -13,7 +13,8 @@ use std::time::{Duration, SystemTime};
 
 use crate::lite::error::{Error, Kind};
 use crate::lite::{
-    Commit, Header, Height, Requester, SignedHeader, TrustThreshold, TrustedState, ValidatorSet,
+    Height, LightCommit, LightHeader, LightValidatorSet, Requester, SignedHeader, TrustThreshold,
+    TrustedState,
 };
 use anomaly::ensure;
 use futures::future::{FutureExt, LocalBoxFuture};
@@ -21,14 +22,11 @@ use std::ops::Add;
 
 /// Returns an error if the header has expired according to the given
 /// trusting_period and current time. If so, the verifier must be reset subjectively.
-pub fn is_within_trust_period<H>(
-    last_header: &H,
+pub fn is_within_trust_period(
+    last_header: &LightHeader,
     trusting_period: Duration,
     now: SystemTime,
-) -> Result<(), Error>
-where
-    H: Header,
-{
+) -> Result<(), Error> {
     let header_time: SystemTime = last_header.bft_time().into();
     let expires_at = header_time.add(trusting_period);
     // Ensure now > expires_at.
@@ -52,15 +50,11 @@ where
 
 /// Validate the validators, next validators, against the signed header.
 /// This is equivalent to validateSignedHeaderAndVals in the spec.
-pub fn validate<C, H>(
-    signed_header: &SignedHeader<C, H>,
-    vals: &C::ValidatorSet,
-    next_vals: &C::ValidatorSet,
-) -> Result<(), Error>
-where
-    C: Commit,
-    H: Header,
-{
+pub fn validate(
+    signed_header: &SignedHeader<LightCommit, LightHeader>,
+    vals: &LightValidatorSet,
+    next_vals: &LightValidatorSet,
+) -> Result<(), Error> {
     let header = signed_header.header();
     let commit = signed_header.commit();
 
@@ -99,10 +93,7 @@ where
 /// NOTE: These validators are expected to be the correct validators for the commit,
 /// but since we're using voting_power_in, we can't actually detect if there's
 /// votes from validators not in the set.
-pub fn verify_commit_full<C>(vals: &C::ValidatorSet, commit: &C) -> Result<(), Error>
-where
-    C: Commit,
-{
+pub fn verify_commit_full(vals: &LightValidatorSet, commit: &LightCommit) -> Result<(), Error> {
     let total_power = vals.total_power();
     let signed_power = commit.voting_power_in(vals)?;
 
@@ -122,15 +113,11 @@ where
 /// NOTE the given validators do not necessarily correspond to the validator set for this commit,
 /// but there may be some intersection. The trust_level parameter allows clients to require more
 /// than +1/3 by implementing the TrustLevel trait accordingly.
-pub fn verify_commit_trusting<C, L>(
-    validators: &C::ValidatorSet,
-    commit: &C,
-    trust_level: L,
-) -> Result<(), Error>
-where
-    C: Commit,
-    L: TrustThreshold,
-{
+pub fn verify_commit_trusting(
+    validators: &LightValidatorSet,
+    commit: &LightCommit,
+    trust_level: impl TrustThreshold,
+) -> Result<(), Error> {
     let total_power = validators.total_power();
     let signed_power = commit.voting_power_in(validators)?;
 
@@ -154,18 +141,13 @@ where
 // and hence it's possible to use it incorrectly.
 // If trusted_state is not expired and this returns Ok, the
 // untrusted_sh and untrusted_next_vals can be considered trusted.
-fn verify_single_inner<H, C, L>(
-    trusted_state: &TrustedState<C, H>,
-    untrusted_sh: &SignedHeader<C, H>,
-    untrusted_vals: &C::ValidatorSet,
-    untrusted_next_vals: &C::ValidatorSet,
-    trust_threshold: L,
-) -> Result<(), Error>
-where
-    H: Header,
-    C: Commit,
-    L: TrustThreshold,
-{
+fn verify_single_inner(
+    trusted_state: &TrustedState,
+    untrusted_sh: &SignedHeader<LightCommit, LightHeader>,
+    untrusted_vals: &LightValidatorSet,
+    untrusted_next_vals: &LightValidatorSet,
+    trust_threshold: impl TrustThreshold,
+) -> Result<(), Error> {
     // validate the untrusted header against its commit, vals, and next_vals
     let untrusted_header = untrusted_sh.header();
     let untrusted_commit = untrusted_sh.commit();
@@ -180,7 +162,7 @@ where
     let untrusted_height = untrusted_sh.header().height();
 
     // ensure the untrusted_header.bft_time() > trusted_header.bft_time()
-    if untrusted_header.bft_time().into() <= trusted_header.bft_time().into() {
+    if untrusted_header.bft_time() <= trusted_header.bft_time() {
         return Err(Kind::NonIncreasingTime.into());
     }
 
@@ -225,20 +207,15 @@ where
 /// header to be trusted.
 ///
 /// This function is primarily for use by IBC handlers.
-pub fn verify_single<H, C, L>(
-    trusted_state: TrustedState<C, H>,
-    untrusted_sh: &SignedHeader<C, H>,
-    untrusted_vals: &C::ValidatorSet,
-    untrusted_next_vals: &C::ValidatorSet,
-    trust_threshold: L,
+pub fn verify_single(
+    trusted_state: TrustedState,
+    untrusted_sh: &SignedHeader<LightCommit, LightHeader>,
+    untrusted_vals: &LightValidatorSet,
+    untrusted_next_vals: &LightValidatorSet,
+    trust_threshold: impl TrustThreshold,
     trusting_period: Duration,
     now: SystemTime,
-) -> Result<TrustedState<C, H>, Error>
-where
-    H: Header,
-    C: Commit,
-    L: TrustThreshold,
-{
+) -> Result<TrustedState, Error> {
     // Fetch the latest state and ensure it hasn't expired.
     let trusted_sh = trusted_state.last_header();
     is_within_trust_period(trusted_sh.header(), trusting_period, now)?;
@@ -280,20 +257,14 @@ where
 /// data from intermediate heights.
 ///
 /// This function is primarily for use by a light node.
-pub async fn verify_bisection<C, H, L, R>(
-    trusted_state: TrustedState<C, H>,
+pub async fn verify_bisection(
+    trusted_state: TrustedState,
     untrusted_height: Height,
-    trust_threshold: L,
+    trust_threshold: impl TrustThreshold,
     trusting_period: Duration,
     now: SystemTime,
-    req: &R,
-) -> Result<Vec<TrustedState<C, H>>, Error>
-where
-    H: Header,
-    C: Commit,
-    L: TrustThreshold,
-    R: Requester<C, H>,
-{
+    req: &impl Requester,
+) -> Result<Vec<TrustedState>, Error> {
     // Ensure the latest state hasn't expired.
     // Note we only check for expiry once in this
     // verify_and_update_bisection function since we assume the
@@ -316,7 +287,7 @@ where
     // So every header we fetch must be checked to be less than now+X
 
     // this is only used to memoize intermediate trusted states:
-    let mut cache: Vec<TrustedState<C, H>> = Vec::new();
+    let mut cache: Vec<TrustedState> = Vec::new();
 
     // inner recursive function which assumes
     // trusting_period check is already done.
@@ -340,19 +311,13 @@ where
 // not store states twice.
 // Additionally, a new state is returned for convenience s.t. it can
 // be used for the other half of the recursion.
-fn verify_bisection_inner<'a, H, C, L, R>(
-    trusted_state: &'a TrustedState<C, H>,
+fn verify_bisection_inner<'a>(
+    trusted_state: &'a TrustedState,
     untrusted_height: Height,
-    trust_threshold: L,
-    req: &'a R,
-    mut cache: &'a mut Vec<TrustedState<C, H>>,
-) -> LocalBoxFuture<'a, Result<TrustedState<C, H>, Error>>
-where
-    H: Header,
-    C: Commit,
-    L: TrustThreshold + 'a,
-    R: Requester<C, H>,
-{
+    trust_threshold: impl TrustThreshold + 'a,
+    req: &'a impl Requester,
+    mut cache: &'a mut Vec<TrustedState>,
+) -> LocalBoxFuture<'a, Result<TrustedState, Error>> {
     async move {
         // fetch the header and vals for the new height
         let untrusted_sh = req.signed_header(untrusted_height).await?;
