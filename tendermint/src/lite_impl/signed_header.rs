@@ -1,12 +1,18 @@
 //! [`lite::SignedHeader`] implementation for [`block::signed_header::SignedHeader`].
 
 use crate::lite::error::{Error, Kind};
-// use crate::lite::ValidatorSet;
+use crate::lite::{LightCommit, LightValidatorSet};
 use crate::validator::Set;
 use crate::{block, hash, lite, vote};
 use anomaly::fail;
 
-// impl lite::Commit for block::signed_header::SignedHeader {
+impl From<block::signed_header::SignedHeader> for LightCommit {
+    fn from(sh: block::signed_header::SignedHeader) -> Self {
+        Self {
+            header_hash: sh.commit.block_id.hash,
+        }
+    }
+}
 //     type ValidatorSet = Set;
 
 //     fn header_hash(&self) -> hash::Hash {

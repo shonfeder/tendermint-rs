@@ -1,63 +1,63 @@
 //! [`lite::Header`] implementation for [`block::Header`].
 
 use crate::amino_types::{message::AminoMessage, BlockId, ConsensusVersion, TimeMsg};
-use crate::lite::Height;
 use crate::merkle::simple_hash_from_byte_vectors;
 use crate::Hash;
-use crate::{block, lite, Time};
+use crate::{block, lite};
 
-// impl lite::Header for block::Header {
-//     type Time = Time;
+impl From<block::Header> for lite::LightHeader {
+    fn from(header: block::Header) -> Self {
+        // TODO: Memoize this
+        let hash = hash(&header);
 
-//     fn height(&self) -> Height {
-//         self.height.value()
-//     }
+        Self {
+            height: header.height.value(),
+            bft_time: header.time,
+            validators_hash: header.validators_hash,
+            next_validators_hash: header.next_validators_hash,
+            hash,
+        }
+    }
+}
 
-//     fn bft_time(&self) -> Time {
-//         self.time
-//     }
+fn hash(header: &block::Header) -> Hash {
+    // Note that if there is an encoding problem this will
+    // panic (as the golang code would):
+    // https://github.com/tendermint/tendermint/blob/134fe2896275bb926b49743c1e25493f6b24cc31/types/block.go#L393
+    // https://github.com/tendermint/tendermint/blob/134fe2896275bb926b49743c1e25493f6b24cc31/types/encoding_helper.go#L9:6
 
-//     fn validators_hash(&self) -> Hash {
-//         self.validators_hash
-//     }
+    let mut fields_bytes: Vec<Vec<u8>> = Vec::with_capacity(16);
+    fields_bytes.push(AminoMessage::bytes_vec(&ConsensusVersion::from(
+        &header.version,
+    )));
+    fields_bytes.push(bytes_enc(header.chain_id.as_bytes()));
+    fields_bytes.push(encode_varint(header.height.value()));
+    fields_bytes.push(AminoMessage::bytes_vec(&TimeMsg::from(header.time)));
+    fields_bytes.push(encode_varint(header.num_txs));
+    fields_bytes.push(encode_varint(header.total_txs));
+    fields_bytes.push(
+        header
+            .last_block_id
+            .as_ref()
+            .map_or(vec![], |id| AminoMessage::bytes_vec(&BlockId::from(id))),
+    );
+    fields_bytes.push(header.last_commit_hash.as_ref().map_or(vec![], encode_hash));
+    fields_bytes.push(header.data_hash.as_ref().map_or(vec![], encode_hash));
+    fields_bytes.push(encode_hash(&header.validators_hash));
+    fields_bytes.push(encode_hash(&header.next_validators_hash));
+    fields_bytes.push(encode_hash(&header.consensus_hash));
+    fields_bytes.push(bytes_enc(&header.app_hash));
+    fields_bytes.push(
+        header
+            .last_results_hash
+            .as_ref()
+            .map_or(vec![], encode_hash),
+    );
+    fields_bytes.push(header.evidence_hash.as_ref().map_or(vec![], encode_hash));
+    fields_bytes.push(bytes_enc(header.proposer_address.as_bytes()));
 
-//     fn next_validators_hash(&self) -> Hash {
-//         self.next_validators_hash
-//     }
-
-//     fn hash(&self) -> Hash {
-//         // Note that if there is an encoding problem this will
-//         // panic (as the golang code would):
-//         // https://github.com/tendermint/tendermint/blob/134fe2896275bb926b49743c1e25493f6b24cc31/types/block.go#L393
-//         // https://github.com/tendermint/tendermint/blob/134fe2896275bb926b49743c1e25493f6b24cc31/types/encoding_helper.go#L9:6
-
-//         let mut fields_bytes: Vec<Vec<u8>> = Vec::with_capacity(16);
-//         fields_bytes.push(AminoMessage::bytes_vec(&ConsensusVersion::from(
-//             &self.version,
-//         )));
-//         fields_bytes.push(bytes_enc(self.chain_id.as_bytes()));
-//         fields_bytes.push(encode_varint(self.height.value()));
-//         fields_bytes.push(AminoMessage::bytes_vec(&TimeMsg::from(self.time)));
-//         fields_bytes.push(encode_varint(self.num_txs));
-//         fields_bytes.push(encode_varint(self.total_txs));
-//         fields_bytes.push(
-//             self.last_block_id
-//                 .as_ref()
-//                 .map_or(vec![], |id| AminoMessage::bytes_vec(&BlockId::from(id))),
-//         );
-//         fields_bytes.push(self.last_commit_hash.as_ref().map_or(vec![], encode_hash));
-//         fields_bytes.push(self.data_hash.as_ref().map_or(vec![], encode_hash));
-//         fields_bytes.push(encode_hash(&self.validators_hash));
-//         fields_bytes.push(encode_hash(&self.next_validators_hash));
-//         fields_bytes.push(encode_hash(&self.consensus_hash));
-//         fields_bytes.push(bytes_enc(&self.app_hash));
-//         fields_bytes.push(self.last_results_hash.as_ref().map_or(vec![], encode_hash));
-//         fields_bytes.push(self.evidence_hash.as_ref().map_or(vec![], encode_hash));
-//         fields_bytes.push(bytes_enc(self.proposer_address.as_bytes()));
-
-//         Hash::Sha256(simple_hash_from_byte_vectors(fields_bytes))
-//     }
-// }
+    Hash::Sha256(simple_hash_from_byte_vectors(fields_bytes))
+}
 
 fn bytes_enc(bytes: &[u8]) -> Vec<u8> {
     let mut chain_id_enc = vec![];
