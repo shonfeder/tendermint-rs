@@ -10,6 +10,19 @@ pub mod inspect;
 #[cfg(feature = "inspect")]
 use crate::inspect::{Inspect, PredTree};
 
+#[cfg(feature = "inspect")]
+pub trait Pred<E>: Assertion<E> + Predicate + Inspect {}
+#[cfg(not(feature = "inspect"))]
+pub trait Pred<E>: Assertion<E> + Predicate {}
+
+#[cfg(feature = "inspect")]
+impl<P, E> Pred<E> for P where P: Assertion<E> + Predicate + Inspect {}
+
+#[cfg(not(feature = "inspect"))]
+impl<P, E> Pred<E> for P where P: Assertion<E> + Predicate {}
+
+// impl<P, E> Pred<E> for &P where P: Pred<E> {}
+
 /// A fully saturated predicate which can be evaluated to a boolean value.
 pub trait Predicate {
     /// Evaluates the predicate to a boolean value.
@@ -18,6 +31,15 @@ pub trait Predicate {
 
 pub trait Assertion<E> {
     fn assert(&self) -> Result<(), E>;
+}
+
+impl<P, E> Assertion<E> for &P
+where
+    P: Assertion<E>,
+{
+    fn assert(&self) -> Result<(), E> {
+        (*self).assert()
+    }
 }
 
 pub struct Assert<P, E> {

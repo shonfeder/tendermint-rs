@@ -20,14 +20,16 @@ type Height = u64;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Error {
-    InvalidCommit,
-    InvalidValidatorSet,
-    InvalidNextValidatorSet,
-    InvalidCommitValue,
     ImplementationSpecific,
+    InsufficientValidatorsOverlap,
+    InsufficientVotingPower,
+    InvalidCommit,
+    InvalidCommitValue,
+    InvalidNextValidatorSet,
+    InvalidValidatorSet,
     NonIncreasingHeight,
     NonMonotonicBftTime,
-    InsufficientVotingPower,
+    NotWithinTrustedPeriod,
 }
 
 #[derive(Clone, Debug, Display)]
@@ -121,9 +123,10 @@ fn _validator_sets_match(signed_header: &SignedHeader, validators: &ValidatorSet
 fn validator_sets_match<'a>(
     signed_header: &'a SignedHeader,
     validators: &'a ValidatorSet,
-) -> impl Predicate + Inspect + 'a {
+) -> impl Pred<Error> + 'a {
     pred::from_fn(move || _validator_sets_match(signed_header, validators))
         .named("validator_sets_match")
+        .to_assert(|_| Error::InvalidValidatorSet)
 }
 
 fn _next_validators_match(signed_header: &SignedHeader, validators: &ValidatorSet) -> bool {
@@ -133,9 +136,10 @@ fn _next_validators_match(signed_header: &SignedHeader, validators: &ValidatorSe
 fn next_validators_match<'a>(
     signed_header: &'a SignedHeader,
     validators: &'a ValidatorSet,
-) -> impl Predicate + Inspect + 'a {
+) -> impl Pred<Error> + 'a {
     pred::from_fn(move || _next_validators_match(&signed_header, &validators))
         .named("next_validators_match")
+        .to_assert(|_| Error::InvalidNextValidatorSet)
 }
 
 fn _header_matches_commit(
@@ -150,9 +154,10 @@ fn header_matches_commit<'a>(
     header: &'a Header,
     commit: &'a Commit,
     header_hasher: &'a impl HeaderHasher,
-) -> impl Predicate + Inspect + 'a {
+) -> impl Pred<Error> + 'a {
     pred::from_fn(move || _header_matches_commit(&header, &commit, &header_hasher))
         .named("header_matches_commit")
+        .to_assert(|_| Error::InvalidCommitValue)
 }
 
 fn _valid_commit(
@@ -167,8 +172,10 @@ fn valid_commit<'a>(
     commit: &'a Commit,
     validators: &'a ValidatorSet,
     validator: &'a impl CommitValidator,
-) -> impl Predicate + Inspect + 'a {
-    pred::from_fn(move || _valid_commit(&commit, &validators, &validator)).named("valid_commit")
+) -> impl Pred<Error> + 'a {
+    pred::from_fn(move || _valid_commit(&commit, &validators, &validator))
+        .named("valid_commit")
+        .to_assert(|_| Error::ImplementationSpecific)
 }
 
 fn _is_within_trusted_period(header: &Header, trusting_period: Duration, now: SystemTime) -> bool {
@@ -182,32 +189,30 @@ fn is_within_trusted_period<'a>(
     header: &'a Header,
     trusting_period: Duration,
     now: SystemTime,
-) -> impl Predicate + Inspect + 'a {
+) -> impl Pred<Error> + 'a {
     pred::from_fn(move || _is_within_trusted_period(&header, trusting_period, now))
         .named("is_within_trusted_period")
+        .to_assert(|_| Error::NotWithinTrustedPeriod)
 }
 
 fn _is_monotonic_bft_time(header_a: &Header, header_b: &Header) -> bool {
     header_b.bft_time >= header_a.bft_time
 }
 
-fn is_monotonic_bft_time<'a>(
-    header_a: &'a Header,
-    header_b: &'a Header,
-) -> impl Predicate + Inspect + 'a {
+fn is_monotonic_bft_time<'a>(header_a: &'a Header, header_b: &'a Header) -> impl Pred<Error> + 'a {
     pred::from_fn(move || _is_monotonic_bft_time(&header_a, &header_b))
         .named("is_monotonic_bft_time")
+        .to_assert(|_| Error::NonMonotonicBftTime)
 }
 
 fn _is_monotonic_height(header_a: &Header, header_b: &Header) -> bool {
     header_a.height > header_b.height
 }
 
-fn is_monotonic_height<'a>(
-    header_a: &'a Header,
-    header_b: &'a Header,
-) -> impl Predicate + Inspect + 'a {
-    pred::from_fn(move || _is_monotonic_height(&header_a, &header_b)).named("is_monotonic_height")
+fn is_monotonic_height<'a>(header_a: &'a Header, header_b: &'a Header) -> impl Pred<Error> + 'a {
+    pred::from_fn(move || _is_monotonic_height(&header_a, &header_b))
+        .named("is_monotonic_height")
+        .to_assert(|_| Error::NonIncreasingHeight)
 }
 
 fn _has_sufficient_voting_power(
@@ -232,11 +237,12 @@ fn has_sufficient_voting_power<'a>(
     validators: &'a ValidatorSet,
     trust_level: &'a TrustLevel,
     calculator: &'a impl VotingPowerCalculator,
-) -> impl Predicate + Inspect + 'a {
+) -> impl Pred<Error> + 'a {
     pred::from_fn(move || {
         _has_sufficient_voting_power(&commit, &validators, &trust_level, &calculator)
     })
     .named("has_sufficient_voting_power")
+    .to_assert(|_| Error::InsufficientVotingPower)
 }
 
 fn _has_sufficient_validators_overlap(
@@ -258,7 +264,7 @@ fn has_sufficient_validators_overlap<'a>(
     trusted_validators: &'a ValidatorSet,
     trust_level: &'a TrustLevel,
     calculator: &'a impl VotingPowerCalculator,
-) -> impl Predicate + Inspect + 'a {
+) -> impl Pred<Error> + 'a {
     pred::from_fn(move || {
         _has_sufficient_validators_overlap(
             &untrusted_commit,
@@ -268,6 +274,7 @@ fn has_sufficient_validators_overlap<'a>(
         )
     })
     .named("has_sufficient_validators_overlap")
+    .to_assert(|_| Error::InsufficientValidatorsOverlap)
 }
 
 fn _has_sufficient_signers_overlap(
@@ -289,7 +296,7 @@ fn has_sufficient_signers_overlap<'a>(
     untrusted_validators: &'a ValidatorSet,
     trust_level: &'a TrustLevel,
     calculator: &'a impl VotingPowerCalculator,
-) -> impl Predicate + Inspect + 'a {
+) -> impl Pred<Error> + 'a {
     pred::from_fn(move || {
         _has_sufficient_signers_overlap(
             &untrusted_commit,
@@ -299,6 +306,7 @@ fn has_sufficient_signers_overlap<'a>(
         )
     })
     .named("has_sufficient_signers_overlap")
+    .to_assert(|_| Error::InvalidCommit)
 }
 
 fn _invalid_next_validator_set(
@@ -310,38 +318,38 @@ fn _invalid_next_validator_set(
         && trusted_state.validators.hash != untrusted_next_vals.hash
 }
 
-fn invalid_next_validator_set<'a>(
+fn valid_next_validator_set<'a>(
     trusted_state: &'a TrustedState,
     untrusted_sh: &'a SignedHeader,
     untrusted_next_vals: &'a ValidatorSet,
-) -> impl Predicate + Inspect + 'a {
-    pred::from_fn(move || {
+) -> impl Pred<Error> + 'a {
+    not(pred::from_fn(move || {
         _invalid_next_validator_set(&trusted_state, &untrusted_sh, &untrusted_next_vals)
-    })
-    .named("invalid_next_validator_set")
+    }))
+    .named("valid_next_validator_set")
+    .to_assert(|_| Error::InvalidNextValidatorSet)
 }
 
 fn verify_pred(
-    validator_sets_match: impl Predicate + Inspect,
-    next_validators_match: impl Predicate + Inspect,
-    header_matches_commit: impl Predicate + Inspect,
-    valid_commit: impl Predicate + Inspect,
-    is_monotonic_bft_time: impl Predicate + Inspect,
-    is_monotonic_height: impl Predicate + Inspect,
-    invalid_next_validator_set: impl Predicate + Inspect,
-    has_sufficient_validators_overlap: impl Predicate + Inspect,
-    has_sufficient_signers_overlap: impl Predicate + Inspect,
-) -> impl Assertion<Error> + Predicate + Inspect {
+    validator_sets_match: impl Pred<Error>,
+    next_validators_match: impl Pred<Error>,
+    header_matches_commit: impl Pred<Error>,
+    valid_commit: impl Pred<Error>,
+    is_monotonic_bft_time: impl Pred<Error>,
+    is_monotonic_height: impl Pred<Error>,
+    valid_next_validator_set: impl Pred<Error>,
+    has_sufficient_validators_overlap: impl Pred<Error>,
+    has_sufficient_signers_overlap: impl Pred<Error>,
+) -> impl Pred<Error> {
     validator_sets_match
-        .to_assert(|_| Error::InvalidValidatorSet)
-        .and(next_validators_match.to_assert(|_| Error::InvalidNextValidatorSet))
-        .and(header_matches_commit.to_assert(|_| Error::InvalidCommitValue))
-        .and(valid_commit.to_assert(|_| Error::ImplementationSpecific))
-        .and(is_monotonic_bft_time.to_assert(|_| Error::NonMonotonicBftTime))
-        .and(is_monotonic_height.to_assert(|_| Error::NonIncreasingHeight))
-        .and(not(invalid_next_validator_set).to_assert(|_| Error::InvalidNextValidatorSet))
-        .and(has_sufficient_validators_overlap.to_assert(|_| Error::InsufficientVotingPower))
-        .and(has_sufficient_signers_overlap.to_assert(|_| Error::InvalidCommit))
+        .and(next_validators_match)
+        .and(header_matches_commit)
+        .and(valid_commit)
+        .and(is_monotonic_bft_time)
+        .and(is_monotonic_height)
+        .and(valid_next_validator_set)
+        .and(has_sufficient_validators_overlap)
+        .and(has_sufficient_signers_overlap)
 }
 
 fn main() {
@@ -423,8 +431,8 @@ fn main() {
     let p_is_monotonic_bft_time =
         is_monotonic_bft_time(&untrusted_sh.header, &trusted_state.header);
     let p_is_monotonic_height = is_monotonic_height(&trusted_state.header, &untrusted_sh.header);
-    let p_invalid_next_validator_set =
-        invalid_next_validator_set(&trusted_state, &untrusted_sh, &untrusted_next_vals);
+    let p_valid_next_validator_set =
+        valid_next_validator_set(&trusted_state, &untrusted_sh, &untrusted_next_vals);
     let p_has_sufficient_validators_overlap = has_sufficient_validators_overlap(
         &untrusted_sh.commit,
         &trusted_state.validators,
@@ -445,7 +453,7 @@ fn main() {
         &p_valid_commit,
         &p_is_monotonic_bft_time,
         &p_is_monotonic_height,
-        &p_invalid_next_validator_set,
+        &p_valid_next_validator_set,
         &p_has_sufficient_validators_overlap,
         &p_has_sufficient_signers_overlap,
     );
