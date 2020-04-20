@@ -4,6 +4,8 @@
 use std::fmt::Display;
 use std::marker::PhantomData;
 
+pub mod light_client;
+
 #[cfg(feature = "inspect")]
 pub mod inspect;
 
