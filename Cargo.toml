@@ -3,5 +3,6 @@
 members = [
     "tendermint",
     "light-node",
+    "light-spike",
     "pred",
 ]
