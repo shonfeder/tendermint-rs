@@ -6,6 +6,9 @@ use std::{
 use crate::{prelude::*, trusted_store::TSReadWriter};
 
 pub enum LightClientEvent {
+    // Errors
+    Error,
+
     // Inputs
     VerifyAtHeight {
         trusted_state: TrustedState,
@@ -28,6 +31,7 @@ pub enum LightClientEvent {
         trusted_height: Height,
         trusted_states: Vec<TrustedState>,
     },
+    AlreadyVerified(Height),
 }
 
 pub struct PendingState {
@@ -103,8 +107,7 @@ impl Handler<LightClientEvent> for LightClient {
                         let pending_state = match pending_state {
                             None => {
                                 // No matching pending state found.
-                                // TODO: Raise error.
-                                todo!()
+                                return LightClientEvent::Error; // TODO: Use specific error
                             }
                             Some(pending_state) => pending_state,
                         };
@@ -140,10 +143,10 @@ impl Handler<LightClientEvent> for LightClient {
                     }
                     // The height of the new trusted state does not match the latest height we needed to verify.
                     Some(latest_height_to_verify) => {
-                        todo!() // TODO: Yield an error
+                        LightClientEvent::Error // TODO: Use specific error
                     }
                     // There were no more heights to verify, ignore the event.
-                    None => todo!(),
+                    None => LightClientEvent::AlreadyVerified(new_height),
                 }
             }
             _ => unreachable!(),

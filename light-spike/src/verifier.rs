@@ -8,6 +8,9 @@ use pred::{Assertion, Pred};
 use crate::{predicates::*, prelude::*};
 
 pub enum VerifierEvent {
+    // Errors
+    Error,
+
     // Inputs
     VerifyAtHeight {
         trusted_state: TrustedState,
@@ -77,10 +80,7 @@ impl Handler<VerifierEvent> for Verifier {
                 let pending_state = self.pending_states.remove(&height);
 
                 match pending_state {
-                    None => {
-                        // TODO: Raise error
-                        todo!()
-                    }
+                    None => VerifierEvent::Error, // TODO: Use specific error
                     Some(pending_state) => self.perform_verification(
                         pending_state.trusted_state,
                         untrusted_sh,
@@ -119,11 +119,11 @@ impl Verifier {
         trusting_period: Duration,
         now: SystemTime,
     ) -> VerifierEvent {
-        if let Err(err) =
-            is_within_trust_period(&trusted_state.header, trusting_period, now).assert()
-        {
-            // TODO: Report error
-            todo!()
+        let within_trust_period =
+            is_within_trust_period(&trusted_state.header, trusting_period, now).assert();
+
+        if let Err(err) = within_trust_period {
+            return VerifierEvent::Error; // TODO: Use specific error
         }
 
         self.start_verification(
@@ -204,8 +204,7 @@ impl Verifier {
                 .into()
             }
             Err(err) => {
-                // TODO: Report error
-                todo!()
+                VerifierEvent::Error // TODO: Use specific error
             }
         }
     }
