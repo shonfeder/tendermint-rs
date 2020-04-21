@@ -7,8 +7,8 @@ digraph G {
   Client      -> LightClient  [label = "VerifyAtHeight"];
   LightClient -> Verifier     [label = "VerifyAtHeight"];
   Verifier    -> Requester    [label = "FetchState"];
-  Requester   -> Verifier     [label = "FetchedState",          style = dashed];
-  Verifier    -> LightClient  [label = "VerifiedTrustedState",  style = dashed];
-  Verifier    -> LightClient  [label = "BisectionNeeded",       style = dashed];
-  LightClient -> Client       [label = "VerifiedTrustedStates", style = dashed];
+  Requester   -> Verifier     [label = "FetchedState",         style = dashed];
+  Verifier    -> LightClient  [label = "VerifiedTrustedState", style = dashed];
+  Verifier    -> LightClient  [label = "BisectionNeeded",      style = dashed];
+  LightClient -> Client       [label = "NewTrustedStates",     style = dashed];
 }

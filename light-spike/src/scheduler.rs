@@ -58,7 +58,7 @@ impl Scheduler {
 
     fn route_event(&self, event: Event) -> Event {
         match event {
-            Event::LightClient(LightClientEvent::VerifiedTrustedStates { .. }) => event,
+            Event::LightClient(LightClientEvent::NewTrustedStates { .. }) => event,
 
             Event::Requester(RequesterEvent::FetchedState {
                 height,

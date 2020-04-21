@@ -17,7 +17,7 @@ pub enum LightClientEvent {
     NewTrustedState(TrustedState),
 
     // Outputs
-    VerifiedTrustedStates {
+    NewTrustedStates {
         trusted_height: Height,
         trusted_states: Vec<TrustedState>,
     },
@@ -87,7 +87,7 @@ impl Handler<LightClientEvent> for LightClient {
                             let verified_states =
                                 std::mem::replace(&mut self.verified_states, VecDeque::new());
 
-                            LightClientEvent::VerifiedTrustedStates {
+                            LightClientEvent::NewTrustedStates {
                                 trusted_height: latest_height_to_verify,
                                 trusted_states: verified_states.into(),
                             }
