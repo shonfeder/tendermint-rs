@@ -4,11 +4,11 @@ digraph G {
   nodesep = 2;
 
   Client [shape = box];
-  Client        -> Verifier      [label = "VerifyAtHeight"];
-  Verifier      -> InnerVerifier [label = "VerifyAtHeight"];
-  InnerVerifier -> Requester     [label = "FetchState"];
-  Requester     -> InnerVerifier [label = "FetchedState",          style = dashed];
-  InnerVerifier -> Verifier      [label = "VerifiedTrustedState",  style = dashed];
-  InnerVerifier -> Verifier      [label = "BisectionNeeded",       style = dashed];
-  Verifier      -> Client        [label = "VerifiedTrustedStates", style = dashed];
+  Client      -> LightClient  [label = "VerifyAtHeight"];
+  LightClient -> Verifier     [label = "VerifyAtHeight"];
+  Verifier    -> Requester    [label = "FetchState"];
+  Requester   -> Verifier     [label = "FetchedState",          style = dashed];
+  Verifier    -> LightClient  [label = "VerifiedTrustedState",  style = dashed];
+  Verifier    -> LightClient  [label = "BisectionNeeded",       style = dashed];
+  LightClient -> Client       [label = "VerifiedTrustedStates", style = dashed];
 }

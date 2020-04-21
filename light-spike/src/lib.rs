@@ -14,10 +14,12 @@ pub trait Handler<Input> {
 }
 
 pub enum Event {
+    NoOp,
+    Tick,
+    Terminate,
     Verifier(VerifierEvent),
     LightClient(LightClientEvent),
     Requester(RequesterEvent),
-    NoOp,
 }
 
 impl From<VerifierEvent> for Event {
