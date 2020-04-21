@@ -5,6 +5,7 @@ pub mod predicates;
 pub mod prelude;
 pub mod requester;
 pub mod scheduler;
+pub mod trusted_store;
 pub mod verifier;
 
 use crate::{light_client::LightClientEvent, requester::RequesterEvent, verifier::VerifierEvent};

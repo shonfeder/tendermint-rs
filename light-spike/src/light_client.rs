@@ -3,7 +3,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use crate::{prelude::*, verifier::VerifierEvent};
+use crate::{prelude::*, trusted_store::TSReadWriter, verifier::VerifierEvent};
 
 pub enum LightClientEvent {
     // Inputs
@@ -24,13 +24,15 @@ pub enum LightClientEvent {
 }
 
 pub struct LightClient {
+    trusted_store: TSReadWriter,
     heights_to_verify: VecDeque<Height>,
     verified_states: VecDeque<TrustedState>,
 }
 
 impl LightClient {
-    pub fn new() -> Self {
+    pub fn new(trusted_store: TSReadWriter) -> Self {
         Self {
+            trusted_store,
             heights_to_verify: VecDeque::new(),
             verified_states: VecDeque::new(),
         }
@@ -65,6 +67,9 @@ impl Handler<LightClientEvent> for LightClient {
                 match latest_height_to_verify {
                     // The height of the new trusted state matches the next height we needed to verify.
                     Some(latest_height_to_verify) if latest_height_to_verify == new_height => {
+                        self.trusted_store
+                            .set(new_height, new_trusted_state.clone());
+
                         self.verified_states.push_front(new_trusted_state.clone());
 
                         if let Some(next_height_to_verify) = self.heights_to_verify.front() {
