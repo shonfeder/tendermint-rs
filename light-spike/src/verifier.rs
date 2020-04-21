@@ -3,9 +3,19 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use pred::{Assertion, Pred};
+use pred::{Assertion, Pred, Predicate};
 
 use crate::{predicates::*, prelude::*};
+
+pub enum VerifierError {
+    VerificationFailed(crate::prelude::Error),
+    NoMatchingPendingState(Height),
+    NotWithinTrustingPeriod {
+        header: Header,
+        trusting_period: Duration,
+        now: SystemTime,
+    },
+}
 
 pub enum VerifierEvent {
     // Errors
@@ -54,7 +64,9 @@ pub struct Verifier {
 }
 
 impl Handler<VerifierEvent> for Verifier {
-    fn handle(&mut self, event: VerifierEvent) -> VerifierEvent {
+    type Error = VerifierError;
+
+    fn handle(&mut self, event: VerifierEvent) -> Result<VerifierEvent, VerifierError> {
         use VerifierEvent::*;
 
         match event {
@@ -77,20 +89,20 @@ impl Handler<VerifierEvent> for Verifier {
                 untrusted_vals,
                 untrusted_next_vals,
             } => {
-                let pending_state = self.pending_states.remove(&height);
+                let pending_state = self
+                    .pending_states
+                    .remove(&height)
+                    .ok_or_else(|| VerifierError::NoMatchingPendingState(height))?;
 
-                match pending_state {
-                    None => VerifierEvent::Error, // TODO: Use specific error
-                    Some(pending_state) => self.perform_verification(
-                        pending_state.trusted_state,
-                        untrusted_sh,
-                        untrusted_vals,
-                        untrusted_next_vals,
-                        pending_state.trust_threshold,
-                        pending_state.trusting_period,
-                        pending_state.now,
-                    ),
-                }
+                self.perform_verification(
+                    pending_state.trusted_state,
+                    untrusted_sh,
+                    untrusted_vals,
+                    untrusted_next_vals,
+                    pending_state.trust_threshold,
+                    pending_state.trusting_period,
+                    pending_state.now,
+                )
             }
             _ => unreachable!(),
         }
@@ -118,12 +130,16 @@ impl Verifier {
         trust_threshold: TrustThreshold,
         trusting_period: Duration,
         now: SystemTime,
-    ) -> VerifierEvent {
+    ) -> Result<VerifierEvent, VerifierError> {
         let within_trust_period =
-            is_within_trust_period(&trusted_state.header, trusting_period, now).assert();
+            is_within_trust_period(&trusted_state.header, trusting_period, now).eval();
 
-        if let Err(err) = within_trust_period {
-            return VerifierEvent::Error; // TODO: Use specific error
+        if !within_trust_period {
+            return Err(VerifierError::NotWithinTrustingPeriod {
+                header: trusted_state.header,
+                trusting_period,
+                now,
+            });
         }
 
         self.start_verification(
@@ -142,7 +158,7 @@ impl Verifier {
         trust_threshold: TrustThreshold,
         trusting_period: Duration,
         now: SystemTime,
-    ) -> VerifierEvent {
+    ) -> Result<VerifierEvent, VerifierError> {
         self.pending_states.insert(
             untrusted_height,
             PendingState {
@@ -154,7 +170,7 @@ impl Verifier {
             },
         );
 
-        VerifierEvent::StateNeeded(untrusted_height).into()
+        Ok(VerifierEvent::StateNeeded(untrusted_height))
     }
 
     pub fn perform_verification(
@@ -166,7 +182,7 @@ impl Verifier {
         trust_threshold: TrustThreshold,
         trusting_period: Duration,
         now: SystemTime,
-    ) -> VerifierEvent {
+    ) -> Result<VerifierEvent, VerifierError> {
         let result = self.verify_untrusted_state(
             &trusted_state,
             &untrusted_sh,
@@ -184,7 +200,7 @@ impl Verifier {
                     validators: untrusted_vals,
                 };
 
-                VerifierEvent::StateVerified(new_trusted_state).into()
+                Ok(VerifierEvent::StateVerified(new_trusted_state))
             }
             Err(Error::InsufficientVotingPower) => {
                 // Insufficient voting power to update.  Need bisection.
@@ -194,18 +210,15 @@ impl Verifier {
                 let untrusted_h = untrusted_sh.header.height;
                 let pivot_height = trusted_h.checked_add(untrusted_h).expect("height overflow") / 2;
 
-                VerifierEvent::VerificationNeeded {
+                Ok(VerifierEvent::VerificationNeeded {
                     trusted_state,
                     pivot_height,
                     trust_threshold,
                     trusting_period,
                     now,
-                }
-                .into()
+                })
             }
-            Err(err) => {
-                VerifierEvent::Error // TODO: Use specific error
-            }
+            Err(err) => Err(VerifierError::VerificationFailed(err)),
         }
     }
 

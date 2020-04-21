@@ -40,18 +40,18 @@ impl Scheduler {
 
     pub fn handle(&mut self, event: Event) -> Event {
         match event {
-            Event::LightClient(e) => {
-                let res = self.light_client.handle(e);
-                self.route_event(Event::LightClient(res))
-            }
-            Event::Verifier(e) => {
-                let res = self.verifier.handle(e);
-                self.route_event(Event::Verifier(res))
-            }
-            Event::Requester(e) => {
-                let res = self.requester.handle(e);
-                self.route_event(Event::Requester(res))
-            }
+            Event::LightClient(event) => match self.light_client.handle(event) {
+                Ok(res) => self.route_event(Event::LightClient(res)),
+                Err(err) => todo!(),
+            },
+            Event::Verifier(e) => match self.verifier.handle(e) {
+                Ok(res) => self.route_event(Event::Verifier(res)),
+                Err(err) => todo!(),
+            },
+            Event::Requester(e) => match self.requester.handle(e) {
+                Ok(res) => self.route_event(Event::Requester(res)),
+                Err(err) => todo!(),
+            },
             _ => unreachable!(),
         }
     }

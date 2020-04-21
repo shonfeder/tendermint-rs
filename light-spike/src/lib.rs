@@ -11,7 +11,8 @@ pub mod verifier;
 use crate::{light_client::LightClientEvent, requester::RequesterEvent, verifier::VerifierEvent};
 
 pub trait Handler<Event> {
-    fn handle(&mut self, event: Event) -> Event;
+    type Error;
+    fn handle(&mut self, event: Event) -> Result<Event, Self::Error>;
 }
 
 pub enum Event {
