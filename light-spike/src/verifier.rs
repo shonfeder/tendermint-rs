@@ -1,4 +1,7 @@
-use std::time::{Duration, SystemTime};
+use std::{
+    collections::HashMap,
+    time::{Duration, SystemTime},
+};
 
 use pred::{Assertion, Pred};
 
@@ -19,6 +22,7 @@ pub enum VerifierEvent {
         untrusted_vals: ValidatorSet,
         untrusted_next_vals: ValidatorSet,
     },
+
     // Outputs
     VerifiedTrustedState(TrustedState),
     BisectionNeeded {
@@ -30,79 +34,62 @@ pub enum VerifierEvent {
     },
 }
 
-pub enum VerifierState {
-    Ready,
-    Unknown,
-    WaitingForUntrustedState {
-        trusted_state: TrustedState,
-        untrusted_height: Height,
-        trust_threshold: TrustThreshold,
-        trusting_period: Duration,
-        now: SystemTime,
-    },
+pub struct PendingState {
+    trusted_state: TrustedState,
+    untrusted_height: Height,
+    trust_threshold: TrustThreshold,
+    trusting_period: Duration,
+    now: SystemTime,
 }
 
 pub struct Verifier {
     voting_power_calculator: Box<dyn VotingPowerCalculator>,
     commit_validator: Box<dyn CommitValidator>,
     header_hasher: Box<dyn HeaderHasher>,
-    state: VerifierState,
+    pending_states: HashMap<Height, PendingState>,
 }
 
 impl Handler<VerifierEvent> for Verifier {
     fn handle(&mut self, event: VerifierEvent) -> Event {
         use VerifierEvent::*;
-        use VerifierState::*;
 
-        let state = std::mem::replace(&mut self.state, Unknown);
-
-        match (state, event) {
-            (
-                Ready,
-                VerifyAtHeight {
-                    trusted_state,
-                    untrusted_height,
-                    trust_threshold,
-                    trusting_period,
-                    now,
-                },
-            ) => self.init_verification(
+        match event {
+            VerifyAtHeight {
+                trusted_state,
+                untrusted_height,
+                trust_threshold,
+                trusting_period,
+                now,
+            } => self.init_verification(
                 trusted_state,
                 untrusted_height,
                 trust_threshold,
                 trusting_period,
                 now,
             ),
-            (
-                WaitingForUntrustedState {
-                    trusted_state,
-                    untrusted_height,
-                    trust_threshold,
-                    trusting_period,
-                    now,
-                },
-                FetchedState {
-                    height,
-                    untrusted_sh,
-                    untrusted_vals,
-                    untrusted_next_vals,
-                },
-            ) => {
-                if untrusted_height != height {
-                    // TODO: Raise error
-                    self.state = VerifierState::Ready;
-                    return Event::NoOp;
-                }
+            FetchedState {
+                height,
+                untrusted_sh,
+                untrusted_vals,
+                untrusted_next_vals,
+            } => {
+                let pending_state = self.pending_states.remove(&height);
 
-                self.perform_verification(
-                    trusted_state,
-                    untrusted_sh,
-                    untrusted_vals,
-                    untrusted_next_vals,
-                    trust_threshold,
-                    trusting_period,
-                    now,
-                )
+                match pending_state {
+                    None => {
+                        // TODO: Raise error
+                        Event::NoOp
+                    }
+                    Some(pending_state) => self.perform_verification(
+                        pending_state.trusted_state,
+                        untrusted_sh,
+                        untrusted_vals,
+                        untrusted_next_vals,
+                        pending_state.trust_threshold,
+                        pending_state.trusting_period,
+                        pending_state.now,
+                    ),
+                }
             }
             _ => unreachable!(),
         }
@@ -119,7 +106,7 @@ impl Verifier {
             voting_power_calculator: Box::new(voting_power_calculator),
             commit_validator: Box::new(commit_validator),
             header_hasher: Box::new(header_hasher),
-            state: VerifierState::Ready,
+            pending_states: HashMap::new(),
         }
     }
 
@@ -134,8 +121,7 @@ impl Verifier {
         if let Err(err) =
             is_within_trust_period(&trusted_state.header, trusting_period, now).assert()
         {
-            // TODO: Report errror
-            self.state = VerifierState::Ready;
+            // TODO: Report error
             return Event::NoOp;
         }
 
@@ -156,14 +142,18 @@ impl Verifier {
         trusting_period: Duration,
         now: SystemTime,
     ) -> Event {
-        self.state = VerifierState::WaitingForUntrustedState {
-            trusted_state,
+        self.pending_states.insert(
             untrusted_height,
-            trust_threshold,
-            trusting_period,
-            now,
-        };
+            PendingState {
+                trusted_state,
+                untrusted_height,
+                trust_threshold,
+                trusting_period,
+                now,
+            },
+        );
 
+        // TODO: move this responsibility into the light client component
         RequesterEvent::FetchState(untrusted_height).into()
     }
 
@@ -204,6 +194,7 @@ impl Verifier {
                 let untrusted_h = untrusted_sh.header.height;
                 let pivot_height = trusted_h.checked_add(untrusted_h).expect("height overflow") / 2;
 
+                // TODO: Rename to something else
                 VerifierEvent::BisectionNeeded {
                     trusted_state,
                     pivot_height,
@@ -215,7 +206,6 @@ impl Verifier {
             }
             Err(err) => {
                 // TODO: Report error
-                self.state = VerifierState::Ready;
                 Event::NoOp
             }
         }
@@ -307,4 +297,3 @@ impl Verifier {
         verify_pred
     }
 }
-

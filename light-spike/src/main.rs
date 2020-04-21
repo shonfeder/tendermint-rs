@@ -1,4 +1,4 @@
-#![allow(unreachable_code)]
+#![allow(unreachable_code, unused_variables)]
 
 use light_spike::{
     light_client::LightClient, prelude::*, requester::Requester, scheduler::Scheduler,
