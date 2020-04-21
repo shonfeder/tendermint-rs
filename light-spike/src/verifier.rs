@@ -5,7 +5,7 @@ use std::{
 
 use pred::{Assertion, Pred};
 
-use crate::{predicates::*, prelude::*, requester::RequesterEvent};
+use crate::{predicates::*, prelude::*};
 
 pub enum VerifierEvent {
     // Inputs
@@ -24,8 +24,9 @@ pub enum VerifierEvent {
     },
 
     // Outputs
-    VerifiedTrustedState(TrustedState),
-    BisectionNeeded {
+    StateVerified(TrustedState),
+    StateNeeded(Height),
+    VerificationNeeded {
         trusted_state: TrustedState,
         pivot_height: Height,
         trust_threshold: TrustThreshold,
@@ -153,8 +154,7 @@ impl Verifier {
             },
         );
 
-        // TODO: move this responsibility into the light client component
-        RequesterEvent::FetchState(untrusted_height).into()
+        VerifierEvent::StateNeeded(untrusted_height).into()
     }
 
     pub fn perform_verification(
@@ -184,7 +184,7 @@ impl Verifier {
                     validators: untrusted_vals,
                 };
 
-                VerifierEvent::VerifiedTrustedState(new_trusted_state).into()
+                VerifierEvent::StateVerified(new_trusted_state).into()
             }
             Err(Error::InsufficientVotingPower) => {
                 // Insufficient voting power to update.  Need bisection.
@@ -194,8 +194,7 @@ impl Verifier {
                 let untrusted_h = untrusted_sh.header.height;
                 let pivot_height = trusted_h.checked_add(untrusted_h).expect("height overflow") / 2;
 
-                // TODO: Rename to something else
-                VerifierEvent::BisectionNeeded {
+                VerifierEvent::VerificationNeeded {
                     trusted_state,
                     pivot_height,
                     trust_threshold,

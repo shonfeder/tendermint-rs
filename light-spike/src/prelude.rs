@@ -51,7 +51,7 @@ pub struct Commit {
     pub header_hash: Hash,
 }
 
-#[derive(Clone, Debug, Display)]
+#[derive(Copy, Clone, Debug, Display)]
 #[display(fmt = "{:?}", self)]
 pub struct TrustThreshold {
     pub numerator: u64,

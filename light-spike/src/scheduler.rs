@@ -73,11 +73,15 @@ impl Scheduler {
             }
             .into(),
 
-            Event::Verifier(VerifierEvent::VerifiedTrustedState(trusted_state)) => {
+            Event::Verifier(VerifierEvent::StateNeeded(height)) => {
+                RequesterEvent::FetchState(height).into()
+            }
+
+            Event::Verifier(VerifierEvent::StateVerified(trusted_state)) => {
                 LightClientEvent::NewTrustedState(trusted_state).into()
             }
 
-            Event::Verifier(VerifierEvent::BisectionNeeded {
+            Event::Verifier(VerifierEvent::VerificationNeeded {
                 trusted_state,
                 pivot_height,
                 trust_threshold,
