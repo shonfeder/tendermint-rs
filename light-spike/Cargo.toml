@@ -9,3 +9,5 @@ edition = "2018"
 [dependencies]
 pred = { path = "../pred" }
 derive_more = "0.99.5"
+tendermint = { path = "../tendermint/" }
+tokio = "0.2.18"

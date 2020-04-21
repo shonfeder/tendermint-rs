@@ -5,7 +5,7 @@ use pred::*;
 use crate::prelude::*;
 
 pub fn _validator_sets_match(signed_header: &SignedHeader, validators: &ValidatorSet) -> bool {
-    signed_header.validator_hash == validators.hash
+    signed_header.validators_hash == validators.hash
 }
 
 pub fn validator_sets_match<'a>(
@@ -18,7 +18,7 @@ pub fn validator_sets_match<'a>(
 }
 
 pub fn _next_validators_match(signed_header: &SignedHeader, validators: &ValidatorSet) -> bool {
-    signed_header.validator_hash == validators.hash
+    signed_header.validators_hash == validators.hash
 }
 
 pub fn next_validators_match<'a>(

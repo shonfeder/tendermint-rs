@@ -2,7 +2,7 @@
 
 pub use crate::{Event, Handler};
 
-pub type Hash = u64;
+pub use tendermint::hash::Hash;
 pub type Height = u64;
 
 use std::time::SystemTime;
@@ -39,6 +39,12 @@ pub struct ValidatorSet {
     pub hash: Hash,
 }
 
+impl From<std::vec::Vec<tendermint::validator::Info>> for ValidatorSet {
+    fn from(vis: std::vec::Vec<tendermint::validator::Info>) -> Self {
+        todo!()
+    }
+}
+
 #[derive(Clone, Debug, Display)]
 #[display(fmt = "{:?}", self)]
 pub struct Commit {
@@ -58,7 +64,13 @@ pub struct SignedHeader {
     pub header: Header,
     pub commit: Commit,
     pub validators: ValidatorSet,
-    pub validator_hash: Hash,
+    pub validators_hash: Hash,
+}
+
+impl From<tendermint::block::signed_header::SignedHeader> for SignedHeader {
+    fn from(sh: tendermint::block::signed_header::SignedHeader) -> Self {
+        todo!()
+    }
 }
 
 #[derive(Clone, Debug, Display)]
@@ -126,4 +138,3 @@ impl HeaderHasher for Box<dyn HeaderHasher> {
         self.as_ref().hash(header)
     }
 }
-
