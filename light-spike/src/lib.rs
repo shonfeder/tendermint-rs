@@ -1,42 +1,40 @@
 #![allow(unreachable_code, dead_code, unused_variables)]
 
-pub mod inner_verifier;
+pub mod light_client;
 pub mod predicates;
 pub mod prelude;
 pub mod requester;
 pub mod scheduler;
 pub mod verifier;
 
-use crate::{
-    inner_verifier::InnerVerifierEvent, requester::RequesterEvent, verifier::VerifierEvent,
-};
+use crate::{light_client::LightClientEvent, requester::RequesterEvent, verifier::VerifierEvent};
 
 pub trait Handler<Input> {
     fn handle(&mut self, event: Input) -> Event;
 }
 
 pub enum Event {
-    VerifierEvent(VerifierEvent),
-    InnerVerifierEvent(InnerVerifierEvent),
-    RequesterEvent(RequesterEvent),
+    Verifier(VerifierEvent),
+    LightClient(LightClientEvent),
+    Requester(RequesterEvent),
     NoOp,
 }
 
 impl From<VerifierEvent> for Event {
     fn from(e: VerifierEvent) -> Self {
-        Self::VerifierEvent(e)
+        Self::Verifier(e)
     }
 }
 
-impl From<InnerVerifierEvent> for Event {
-    fn from(e: InnerVerifierEvent) -> Self {
-        Self::InnerVerifierEvent(e)
+impl From<LightClientEvent> for Event {
+    fn from(e: LightClientEvent) -> Self {
+        Self::LightClient(e)
     }
 }
 
 impl From<RequesterEvent> for Event {
     fn from(e: RequesterEvent) -> Self {
-        Self::RequesterEvent(e)
+        Self::Requester(e)
     }
 }
 

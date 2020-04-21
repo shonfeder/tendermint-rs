@@ -1,15 +1,15 @@
 use std::sync::mpsc;
 
 use crate::{
-    inner_verifier::{InnerVerifier, InnerVerifierEvent},
+    light_client::{LightClient, LightClientEvent},
     prelude::*,
     requester::{Requester, RequesterEvent},
     verifier::{Verifier, VerifierEvent},
 };
 
 pub struct Scheduler {
+    light_client: LightClient,
     verifier: Verifier,
-    inner_verifier: InnerVerifier,
     requester: Requester,
     recv_input: mpsc::Receiver<Event>,
     send_output: mpsc::SyncSender<Event>,
@@ -17,16 +17,16 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn new(
+        light_client: LightClient,
         verifier: Verifier,
-        inner_verifier: InnerVerifier,
         requester: Requester,
     ) -> (mpsc::SyncSender<Event>, mpsc::Receiver<Event>, Self) {
         let (send_input, recv_input) = mpsc::sync_channel(16);
         let (send_output, recv_output) = mpsc::sync_channel(16);
 
         let scheduler = Self {
+            light_client,
             verifier,
-            inner_verifier,
             requester,
             recv_input,
             send_output,
@@ -44,18 +44,18 @@ impl Scheduler {
                 .unwrap_or_else(|| self.recv_input.recv().unwrap());
 
             match event {
-                Event::VerifierEvent(VerifierEvent::VerifiedTrustedStates { .. }) => {
+                Event::LightClient(LightClientEvent::VerifiedTrustedStates { .. }) => {
                     self.send_output.send(event).unwrap()
                 }
-                Event::VerifierEvent(e) => {
-                    let res = self.verifier.handle(e);
+                Event::LightClient(e) => {
+                    let res = self.light_client.handle(e);
                     next_event = Some(self.route_event(res));
                 }
-                Event::RequesterEvent(e) => {
+                Event::Requester(e) => {
                     let res = self.requester.handle(e);
                     next_event = Some(self.route_event(res));
                 }
-                Event::InnerVerifierEvent(e) => unreachable!(),
+                Event::Verifier(e) => unreachable!(),
                 Event::NoOp => continue,
             }
         }
@@ -63,28 +63,28 @@ impl Scheduler {
 
     fn route_event(&self, event: Event) -> Event {
         match event {
-            Event::RequesterEvent(RequesterEvent::FetchedState {
+            Event::Requester(RequesterEvent::FetchedState {
                 height,
                 signed_header,
                 validator_set,
                 next_validator_set,
-            }) => InnerVerifierEvent::FetchedState {
+            }) => VerifierEvent::FetchedState {
                 height,
                 untrusted_sh: signed_header,
                 untrusted_vals: validator_set,
                 untrusted_next_vals: next_validator_set,
             }
             .into(),
-            Event::InnerVerifierEvent(InnerVerifierEvent::VerifiedTrustedState(trusted_state)) => {
-                VerifierEvent::NewTrustedState(trusted_state).into()
+            Event::Verifier(VerifierEvent::VerifiedTrustedState(trusted_state)) => {
+                LightClientEvent::NewTrustedState(trusted_state).into()
             }
-            Event::InnerVerifierEvent(InnerVerifierEvent::BisectionNeeded {
+            Event::Verifier(VerifierEvent::BisectionNeeded {
                 trusted_state,
                 pivot_height,
                 trust_threshold,
                 trusting_period,
                 now,
-            }) => VerifierEvent::VerifyAtHeight {
+            }) => LightClientEvent::VerifyAtHeight {
                 trusted_state,
                 untrusted_height: pivot_height,
                 trust_threshold,
