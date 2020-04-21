@@ -42,15 +42,15 @@ impl Scheduler {
         match event {
             Event::LightClient(e) => {
                 let res = self.light_client.handle(e);
-                self.route_event(res)
+                self.route_event(Event::LightClient(res))
             }
             Event::Verifier(e) => {
                 let res = self.verifier.handle(e);
-                self.route_event(res)
+                self.route_event(Event::Verifier(res))
             }
             Event::Requester(e) => {
                 let res = self.requester.handle(e);
-                self.route_event(res)
+                self.route_event(Event::Requester(res))
             }
             _ => unreachable!(),
         }

@@ -57,7 +57,7 @@ impl Requester {
 }
 
 impl Handler<RequesterEvent> for Requester {
-    fn handle(&mut self, event: RequesterEvent) -> Event {
+    fn handle(&mut self, event: RequesterEvent) -> RequesterEvent {
         use RequesterEvent::*;
 
         match event {

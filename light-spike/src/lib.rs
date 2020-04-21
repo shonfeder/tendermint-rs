@@ -10,8 +10,8 @@ pub mod verifier;
 
 use crate::{light_client::LightClientEvent, requester::RequesterEvent, verifier::VerifierEvent};
 
-pub trait Handler<Input> {
-    fn handle(&mut self, event: Input) -> Event;
+pub trait Handler<Event> {
+    fn handle(&mut self, event: Event) -> Event;
 }
 
 pub enum Event {

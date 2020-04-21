@@ -51,7 +51,7 @@ pub struct Verifier {
 }
 
 impl Handler<VerifierEvent> for Verifier {
-    fn handle(&mut self, event: VerifierEvent) -> Event {
+    fn handle(&mut self, event: VerifierEvent) -> VerifierEvent {
         use VerifierEvent::*;
 
         match event {
@@ -79,7 +79,7 @@ impl Handler<VerifierEvent> for Verifier {
                 match pending_state {
                     None => {
                         // TODO: Raise error
-                        Event::NoOp
+                        todo!()
                     }
                     Some(pending_state) => self.perform_verification(
                         pending_state.trusted_state,
@@ -118,12 +118,12 @@ impl Verifier {
         trust_threshold: TrustThreshold,
         trusting_period: Duration,
         now: SystemTime,
-    ) -> Event {
+    ) -> VerifierEvent {
         if let Err(err) =
             is_within_trust_period(&trusted_state.header, trusting_period, now).assert()
         {
             // TODO: Report error
-            return Event::NoOp;
+            todo!()
         }
 
         self.start_verification(
@@ -142,7 +142,7 @@ impl Verifier {
         trust_threshold: TrustThreshold,
         trusting_period: Duration,
         now: SystemTime,
-    ) -> Event {
+    ) -> VerifierEvent {
         self.pending_states.insert(
             untrusted_height,
             PendingState {
@@ -166,7 +166,7 @@ impl Verifier {
         trust_threshold: TrustThreshold,
         trusting_period: Duration,
         now: SystemTime,
-    ) -> Event {
+    ) -> VerifierEvent {
         let result = self.verify_untrusted_state(
             &trusted_state,
             &untrusted_sh,
@@ -205,7 +205,7 @@ impl Verifier {
             }
             Err(err) => {
                 // TODO: Report error
-                Event::NoOp
+                todo!()
             }
         }
     }

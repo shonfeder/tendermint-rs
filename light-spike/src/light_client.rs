@@ -62,7 +62,7 @@ impl LightClient {
 }
 
 impl Handler<LightClientEvent> for LightClient {
-    fn handle(&mut self, event: LightClientEvent) -> Event {
+    fn handle(&mut self, event: LightClientEvent) -> LightClientEvent {
         match event {
             LightClientEvent::VerifyAtHeight {
                 trusted_state,
@@ -104,7 +104,7 @@ impl Handler<LightClientEvent> for LightClient {
                             None => {
                                 // No matching pending state found.
                                 // TODO: Raise error.
-                                return Event::NoOp;
+                                todo!()
                             }
                             Some(pending_state) => pending_state,
                         };
@@ -140,10 +140,10 @@ impl Handler<LightClientEvent> for LightClient {
                     }
                     // The height of the new trusted state does not match the latest height we needed to verify.
                     Some(latest_height_to_verify) => {
-                        Event::NoOp // TODO: Yield an error
+                        todo!() // TODO: Yield an error
                     }
                     // There were no more heights to verify, ignore the event.
-                    None => Event::NoOp,
+                    None => todo!(),
                 }
             }
             _ => unreachable!(),
