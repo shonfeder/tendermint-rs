@@ -81,7 +81,7 @@ pub struct TrustedState {
 }
 
 // Crypto function traits allowing mocking out during testing
-pub trait VotingPowerCalculator {
+pub trait VotingPowerCalculator: Send + Sync {
     // What kind of errors should we be reporting here?
     fn voting_power_in(&self, commit: &Commit, validators: &ValidatorSet) -> Result<u64, Error>;
     fn total_power_of(&self, validators: &ValidatorSet) -> Result<u64, Error>;
@@ -107,7 +107,7 @@ impl VotingPowerCalculator for Box<dyn VotingPowerCalculator> {
     }
 }
 
-pub trait CommitValidator {
+pub trait CommitValidator: Send + Sync {
     fn validate(&self, commit: &Commit, validators: &ValidatorSet) -> Result<(), Error>;
 }
 
@@ -123,7 +123,7 @@ impl CommitValidator for Box<dyn CommitValidator> {
     }
 }
 
-pub trait HeaderHasher {
+pub trait HeaderHasher: Send + Sync {
     fn hash(&self, header: &Header) -> Hash; // Or Error?
 }
 
