@@ -17,8 +17,7 @@ pub enum VerifierError {
     },
 }
 
-pub enum VerifierEvent {
-    // Inputs
+pub enum VerifierInput {
     VerifyAtHeight {
         trusted_state: TrustedState,
         untrusted_height: Height,
@@ -32,8 +31,9 @@ pub enum VerifierEvent {
         untrusted_vals: ValidatorSet,
         untrusted_next_vals: ValidatorSet,
     },
+}
 
-    // Outputs
+pub enum VerifierOutput {
     StateVerified(TrustedState),
     StateNeeded(Height),
     VerificationNeeded {
@@ -60,11 +60,12 @@ pub struct Verifier {
     pending_states: HashMap<Height, PendingState>,
 }
 
-impl Handler<VerifierEvent> for Verifier {
+impl Handler<VerifierInput> for Verifier {
+    type Output = VerifierOutput;
     type Error = VerifierError;
 
-    fn handle(&mut self, event: VerifierEvent) -> Result<VerifierEvent, VerifierError> {
-        use VerifierEvent::*;
+    fn handle(&mut self, event: VerifierInput) -> Result<VerifierOutput, VerifierError> {
+        use VerifierInput::*;
 
         match event {
             VerifyAtHeight {
@@ -86,7 +87,6 @@ impl Handler<VerifierEvent> for Verifier {
                 untrusted_vals,
                 untrusted_next_vals,
             } => self.on_fetched_state(height, untrusted_sh, untrusted_vals, untrusted_next_vals),
-            _ => unreachable!(),
         }
     }
 }
@@ -112,7 +112,7 @@ impl Verifier {
         trust_threshold: TrustThreshold,
         trusting_period: Duration,
         now: SystemTime,
-    ) -> Result<VerifierEvent, VerifierError> {
+    ) -> Result<VerifierOutput, VerifierError> {
         let within_trust_period =
             is_within_trust_period(&trusted_state.header, trusting_period, now).eval();
 
@@ -140,7 +140,7 @@ impl Verifier {
         trust_threshold: TrustThreshold,
         trusting_period: Duration,
         now: SystemTime,
-    ) -> Result<VerifierEvent, VerifierError> {
+    ) -> Result<VerifierOutput, VerifierError> {
         self.pending_states.insert(
             untrusted_height,
             PendingState {
@@ -152,7 +152,7 @@ impl Verifier {
             },
         );
 
-        Ok(VerifierEvent::StateNeeded(untrusted_height))
+        Ok(VerifierOutput::StateNeeded(untrusted_height))
     }
 
     fn on_fetched_state(
@@ -161,7 +161,7 @@ impl Verifier {
         untrusted_sh: SignedHeader,
         untrusted_vals: ValidatorSet,
         untrusted_next_vals: ValidatorSet,
-    ) -> Result<VerifierEvent, VerifierError> {
+    ) -> Result<VerifierOutput, VerifierError> {
         let pending_state = self
             .pending_states
             .remove(&height)
@@ -187,7 +187,7 @@ impl Verifier {
         trust_threshold: TrustThreshold,
         trusting_period: Duration,
         now: SystemTime,
-    ) -> Result<VerifierEvent, VerifierError> {
+    ) -> Result<VerifierOutput, VerifierError> {
         let result = self.verify_untrusted_state(
             &trusted_state,
             &untrusted_sh,
@@ -205,13 +205,13 @@ impl Verifier {
                     validators: untrusted_vals,
                 };
 
-                Ok(VerifierEvent::StateVerified(new_trusted_state))
+                Ok(VerifierOutput::StateVerified(new_trusted_state))
             }
             Err(Error::InsufficientVotingPower) => {
                 // Insufficient voting power to update.  Need bisection.
                 let pivot_height = self.compute_pivot_height(&trusted_state, &untrusted_sh);
 
-                Ok(VerifierEvent::VerificationNeeded {
+                Ok(VerifierOutput::VerificationNeeded {
                     trusted_state,
                     pivot_height,
                     trust_threshold,

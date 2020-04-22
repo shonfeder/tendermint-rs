@@ -1,10 +1,10 @@
 use std::sync::mpsc::{Receiver, SyncSender};
 
 use crate::{
-    light_client::{LightClient, LightClientEvent},
+    light_client::{LightClient, LightClientInput, LightClientOutput},
     prelude::*,
-    requester::{Requester, RequesterEvent},
-    verifier::{Verifier, VerifierEvent},
+    requester::{Requester, RequesterInput, RequesterOutput},
+    verifier::{Verifier, VerifierInput, VerifierOutput},
 };
 
 pub struct Scheduler {
@@ -22,14 +22,13 @@ impl Scheduler {
         }
     }
 
-    pub fn run(&mut self, sender: SyncSender<Event>, receiver: Receiver<Event>) {
+    pub fn run(&mut self, sender: SyncSender<Input>, receiver: Receiver<Input>) {
         loop {
             let event = receiver.recv().unwrap();
 
             match event {
-                Event::NoOp => continue,
-                Event::Terminate => break,
-                Event::Tick => todo!(),
+                Input::Terminate => break,
+                Input::Tick => todo!(),
                 event => {
                     let next_event = self.handle(event);
                     sender.send(next_event).unwrap();
@@ -38,33 +37,37 @@ impl Scheduler {
         }
     }
 
-    pub fn handle(&mut self, event: Event) -> Event {
+    pub fn handle(&mut self, event: Input) -> Input {
         match event {
-            Event::LightClient(event) => match self.light_client.handle(event) {
-                Ok(res) => self.route_event(Event::LightClient(res)),
+            Input::LightClient(event) => match self.light_client.handle(event) {
+                Ok(res) => self.route_event(Output::LightClient(res)),
                 Err(err) => todo!(),
             },
-            Event::Verifier(e) => match self.verifier.handle(e) {
-                Ok(res) => self.route_event(Event::Verifier(res)),
+            Input::Verifier(e) => match self.verifier.handle(e) {
+                Ok(res) => self.route_event(Output::Verifier(res)),
                 Err(err) => todo!(),
             },
-            Event::Requester(e) => match self.requester.handle(e) {
-                Ok(res) => self.route_event(Event::Requester(res)),
+            Input::Requester(e) => match self.requester.handle(e) {
+                Ok(res) => self.route_event(Output::Requester(res)),
                 Err(err) => todo!(),
             },
             _ => unreachable!(),
         }
     }
 
-    fn route_event(&self, event: Event) -> Event {
+    fn route_event(&self, event: Output) -> Input {
         match event {
-            Event::LightClient(LightClientEvent::PerformVerification {
+            Output::LightClient(LightClientOutput::NewTrustedStates { .. }) => {
+                todo!() // route back to caller
+            }
+
+            Output::LightClient(LightClientOutput::PerformVerification {
                 trusted_state,
                 untrusted_height,
                 trust_threshold,
                 trusting_period,
                 now,
-            }) => Event::Verifier(VerifierEvent::VerifyAtHeight {
+            }) => Input::Verifier(VerifierInput::VerifyAtHeight {
                 trusted_state,
                 untrusted_height,
                 trust_threshold,
@@ -72,21 +75,21 @@ impl Scheduler {
                 now,
             }),
 
-            Event::Verifier(VerifierEvent::StateNeeded(height)) => {
-                RequesterEvent::FetchState(height).into()
+            Output::Verifier(VerifierOutput::StateNeeded(height)) => {
+                RequesterInput::FetchState(height).into()
             }
 
-            Event::Verifier(VerifierEvent::StateVerified(trusted_state)) => {
-                LightClientEvent::NewTrustedState(trusted_state).into()
+            Output::Verifier(VerifierOutput::StateVerified(trusted_state)) => {
+                LightClientInput::NewTrustedState(trusted_state).into()
             }
 
-            Event::Verifier(VerifierEvent::VerificationNeeded {
+            Output::Verifier(VerifierOutput::VerificationNeeded {
                 trusted_state,
                 pivot_height,
                 trust_threshold,
                 trusting_period,
                 now,
-            }) => LightClientEvent::VerifyAtHeight {
+            }) => LightClientInput::VerifyAtHeight {
                 trusted_state,
                 untrusted_height: pivot_height,
                 trust_threshold,
@@ -95,12 +98,12 @@ impl Scheduler {
             }
             .into(),
 
-            Event::Requester(RequesterEvent::FetchedState {
+            Output::Requester(RequesterOutput::FetchedState {
                 height,
                 signed_header,
                 validator_set,
                 next_validator_set,
-            }) => VerifierEvent::FetchedState {
+            }) => VerifierInput::FetchedState {
                 height,
                 untrusted_sh: signed_header,
                 untrusted_vals: validator_set,
@@ -108,7 +111,7 @@ impl Scheduler {
             }
             .into(),
 
-            event => event,
+            Output::NoOp => Input::NoOp,
         }
     }
 }

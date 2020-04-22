@@ -1,6 +1,6 @@
 // Some simplified types which only have the fields needed for core verification
 
-pub use crate::{Event, Handler};
+pub use crate::{Handler, Input, Output};
 
 pub use tendermint::hash::Hash;
 pub type Height = u64;

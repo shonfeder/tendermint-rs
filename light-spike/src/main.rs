@@ -24,6 +24,6 @@ fn main() {
 
     std::thread::spawn(|| scheduler.run(internal_sender, receiver));
 
-    sender.send(Event::Tick).unwrap();
-    sender.send(Event::Terminate).unwrap();
+    sender.send(Input::Tick).unwrap();
+    sender.send(Input::Terminate).unwrap();
 }

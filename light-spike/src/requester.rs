@@ -7,15 +7,11 @@ pub enum RequesterError {
     RpcError(rpc::Error),
 }
 
-pub enum RequesterEvent {
-    // Inputs
-    FetchSignedHeader(Height),
-    FetchValidatorSet(Height),
-
+pub enum RequesterInput {
     FetchState(Height),
-    // Outputs
-    SignedHeader(Height, SignedHeader),
-    ValidatorSet(Height, ValidatorSet),
+}
+
+pub enum RequesterOutput {
     FetchedState {
         height: Height,
         signed_header: SignedHeader,
@@ -61,34 +57,26 @@ impl Requester {
     }
 }
 
-impl Handler<RequesterEvent> for Requester {
+impl Handler<RequesterInput> for Requester {
+    type Output = RequesterOutput;
     type Error = RequesterError;
 
-    fn handle(&mut self, event: RequesterEvent) -> Result<RequesterEvent, RequesterError> {
-        use RequesterEvent::*;
+    fn handle(&mut self, event: RequesterInput) -> Result<RequesterOutput, RequesterError> {
+        use RequesterInput::*;
 
         match event {
-            FetchSignedHeader(height) => {
-                let signed_header = self.fetch_signed_header(height)?;
-                Ok(RequesterEvent::SignedHeader(height, signed_header))
-            }
-            FetchValidatorSet(height) => {
-                let validator_set = self.fetch_validator_set(height)?;
-                Ok(RequesterEvent::ValidatorSet(height, validator_set))
-            }
             FetchState(height) => {
                 let signed_header = self.fetch_signed_header(height)?;
                 let validator_set = self.fetch_validator_set(height)?;
                 let next_validator_set = self.fetch_validator_set(height + 1)?;
 
-                Ok(RequesterEvent::FetchedState {
+                Ok(RequesterOutput::FetchedState {
                     height,
                     signed_header,
                     validator_set,
                     next_validator_set,
                 })
             }
-            _ => unreachable!(),
         }
     }
 }

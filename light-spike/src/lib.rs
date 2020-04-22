@@ -8,37 +8,67 @@ pub mod scheduler;
 pub mod trusted_store;
 pub mod verifier;
 
-use crate::{light_client::LightClientEvent, requester::RequesterEvent, verifier::VerifierEvent};
+use crate::{
+    light_client::{LightClientInput, LightClientOutput},
+    requester::{RequesterInput, RequesterOutput},
+    verifier::{VerifierInput, VerifierOutput},
+};
 
-pub trait Handler<Event> {
+pub trait Handler<Input> {
+    type Output;
     type Error;
-    fn handle(&mut self, event: Event) -> Result<Event, Self::Error>;
+
+    fn handle(&mut self, event: Input) -> Result<Self::Output, Self::Error>;
 }
 
-pub enum Event {
+pub enum Input {
     NoOp,
     Tick,
     Terminate,
-    Verifier(VerifierEvent),
-    LightClient(LightClientEvent),
-    Requester(RequesterEvent),
+    Verifier(VerifierInput),
+    LightClient(LightClientInput),
+    Requester(RequesterInput),
 }
 
-impl From<VerifierEvent> for Event {
-    fn from(e: VerifierEvent) -> Self {
+impl From<VerifierInput> for Input {
+    fn from(e: VerifierInput) -> Self {
         Self::Verifier(e)
     }
 }
 
-impl From<LightClientEvent> for Event {
-    fn from(e: LightClientEvent) -> Self {
+impl From<LightClientInput> for Input {
+    fn from(e: LightClientInput) -> Self {
         Self::LightClient(e)
     }
 }
 
-impl From<RequesterEvent> for Event {
-    fn from(e: RequesterEvent) -> Self {
+impl From<RequesterInput> for Input {
+    fn from(e: RequesterInput) -> Self {
         Self::Requester(e)
     }
 }
 
+pub enum Output {
+    NoOp,
+    Verifier(VerifierOutput),
+    LightClient(LightClientOutput),
+    Requester(RequesterOutput),
+}
+
+impl From<VerifierOutput> for Output {
+    fn from(e: VerifierOutput) -> Self {
+        Self::Verifier(e)
+    }
+}
+
+impl From<LightClientOutput> for Output {
+    fn from(e: LightClientOutput) -> Self {
+        Self::LightClient(e)
+    }
+}
+
+impl From<RequesterOutput> for Output {
+    fn from(e: RequesterOutput) -> Self {
+        Self::Requester(e)
+    }
+}
