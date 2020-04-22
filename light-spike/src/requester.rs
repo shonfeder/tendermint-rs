@@ -11,6 +11,7 @@ pub enum RequesterEvent {
     // Inputs
     FetchSignedHeader(Height),
     FetchValidatorSet(Height),
+
     FetchState(Height),
     // Outputs
     SignedHeader(Height, SignedHeader),
@@ -32,7 +33,7 @@ impl Requester {
         Self { rpc_client }
     }
 
-    pub fn fetch_signed_header(&self, h: Height) -> Result<SignedHeader, RequesterError> {
+    fn fetch_signed_header(&self, h: Height) -> Result<SignedHeader, RequesterError> {
         let height: block::Height = h.into();
 
         let res = block_on(async {
@@ -48,7 +49,7 @@ impl Requester {
         }
     }
 
-    pub fn fetch_validator_set(&self, h: Height) -> Result<ValidatorSet, RequesterError> {
+    fn fetch_validator_set(&self, h: Height) -> Result<ValidatorSet, RequesterError> {
         let height: block::Height = h.into();
 
         let res = block_on(self.rpc_client.validators(h));

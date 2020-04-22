@@ -75,6 +75,65 @@ impl LightClient {
 
         Ok(())
     }
+
+    fn on_new_trusted_state(
+        &mut self,
+        new_trusted_state: TrustedState,
+    ) -> Result<LightClientEvent, LightClientError> {
+        self.save_trusted_state(new_trusted_state.clone())?;
+
+        if let Some(pending_height) = self.pending_heights.pop_front() {
+            // We have more states to verify
+            let pending_state = self
+                .pending_states
+                .remove(&pending_height)
+                .ok_or_else(|| LightClientError::NoMatchingPendingState(pending_height))?;
+
+            Ok(LightClientEvent::PerformVerification {
+                trusted_state: new_trusted_state,
+                untrusted_height: pending_height,
+                trust_threshold: pending_state.trust_threshold,
+                trusting_period: pending_state.trusting_period,
+                now: pending_state.now,
+            })
+        } else {
+            // No more pending heights to verify, we are done, return all verified states
+            let verified_states = self.reset();
+
+            Ok(LightClientEvent::NewTrustedStates {
+                trusted_height: new_trusted_state.header.height,
+                trusted_states: verified_states.into(),
+            })
+        }
+    }
+
+    fn on_verify_at_height(
+        &mut self,
+        trusted_state: TrustedState,
+        untrusted_height: Height,
+        trust_threshold: TrustThreshold,
+        trusting_period: Duration,
+        now: SystemTime,
+    ) -> Result<LightClientEvent, LightClientError> {
+        let pending_state = PendingState {
+            trusted_state: trusted_state.clone(),
+            untrusted_height,
+            trust_threshold,
+            trusting_period,
+            now,
+        };
+
+        self.pending_heights.push_front(untrusted_height);
+        self.pending_states.insert(untrusted_height, pending_state);
+
+        Ok(LightClientEvent::PerformVerification {
+            trusted_state,
+            untrusted_height,
+            trust_threshold,
+            trusting_period,
+            now,
+        })
+    }
 }
 
 impl Handler<LightClientEvent> for LightClient {
@@ -88,55 +147,17 @@ impl Handler<LightClientEvent> for LightClient {
                 trust_threshold,
                 trusting_period,
                 now,
-            } => {
-                let pending_state = PendingState {
-                    trusted_state: trusted_state.clone(),
-                    untrusted_height,
-                    trust_threshold,
-                    trusting_period,
-                    now,
-                };
-
-                self.pending_heights.push_front(untrusted_height);
-                self.pending_states.insert(untrusted_height, pending_state);
-
-                Ok(LightClientEvent::PerformVerification {
-                    trusted_state,
-                    untrusted_height,
-                    trust_threshold,
-                    trusting_period,
-                    now,
-                })
-            }
+            } => self.on_verify_at_height(
+                trusted_state,
+                untrusted_height,
+                trust_threshold,
+                trusting_period,
+                now,
+            ),
             LightClientEvent::NewTrustedState(new_trusted_state) => {
-                self.save_trusted_state(new_trusted_state.clone())?;
-
-                if let Some(pending_height) = self.pending_heights.pop_front() {
-                    // We have more states to verify
-                    let pending_state = self
-                        .pending_states
-                        .remove(&pending_height)
-                        .ok_or_else(|| LightClientError::NoMatchingPendingState(pending_height))?;
-
-                    Ok(LightClientEvent::PerformVerification {
-                        trusted_state: new_trusted_state,
-                        untrusted_height: pending_height,
-                        trust_threshold: pending_state.trust_threshold,
-                        trusting_period: pending_state.trusting_period,
-                        now: pending_state.now,
-                    })
-                } else {
-                    // No more pending heights to verify, we are done, return all verified states
-                    let verified_states = self.reset();
-
-                    Ok(LightClientEvent::NewTrustedStates {
-                        trusted_height: new_trusted_state.header.height,
-                        trusted_states: verified_states.into(),
-                    })
-                }
+                self.on_new_trusted_state(new_trusted_state)
             }
             _ => unreachable!(),
         }
     }
 }
-

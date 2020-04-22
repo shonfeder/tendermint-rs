@@ -73,7 +73,7 @@ impl Handler<VerifierEvent> for Verifier {
                 trust_threshold,
                 trusting_period,
                 now,
-            } => self.init_verification(
+            } => self.on_verify_at_height(
                 trusted_state,
                 untrusted_height,
                 trust_threshold,
@@ -85,22 +85,7 @@ impl Handler<VerifierEvent> for Verifier {
                 untrusted_sh,
                 untrusted_vals,
                 untrusted_next_vals,
-            } => {
-                let pending_state = self
-                    .pending_states
-                    .remove(&height)
-                    .ok_or_else(|| VerifierError::NoMatchingPendingState(height))?;
-
-                self.perform_verification(
-                    pending_state.trusted_state,
-                    untrusted_sh,
-                    untrusted_vals,
-                    untrusted_next_vals,
-                    pending_state.trust_threshold,
-                    pending_state.trusting_period,
-                    pending_state.now,
-                )
-            }
+            } => self.on_fetched_state(height, untrusted_sh, untrusted_vals, untrusted_next_vals),
             _ => unreachable!(),
         }
     }
@@ -120,7 +105,7 @@ impl Verifier {
         }
     }
 
-    pub fn init_verification(
+    fn on_verify_at_height(
         &mut self,
         trusted_state: TrustedState,
         untrusted_height: Height,
@@ -148,7 +133,7 @@ impl Verifier {
         )
     }
 
-    pub fn start_verification(
+    fn start_verification(
         &mut self,
         trusted_state: TrustedState,
         untrusted_height: Height,
@@ -170,7 +155,30 @@ impl Verifier {
         Ok(VerifierEvent::StateNeeded(untrusted_height))
     }
 
-    pub fn perform_verification(
+    fn on_fetched_state(
+        &mut self,
+        height: Height,
+        untrusted_sh: SignedHeader,
+        untrusted_vals: ValidatorSet,
+        untrusted_next_vals: ValidatorSet,
+    ) -> Result<VerifierEvent, VerifierError> {
+        let pending_state = self
+            .pending_states
+            .remove(&height)
+            .ok_or_else(|| VerifierError::NoMatchingPendingState(height))?;
+
+        self.perform_verification(
+            pending_state.trusted_state,
+            untrusted_sh,
+            untrusted_vals,
+            untrusted_next_vals,
+            pending_state.trust_threshold,
+            pending_state.trusting_period,
+            pending_state.now,
+        )
+    }
+
+    fn perform_verification(
         &mut self,
         trusted_state: TrustedState,
         untrusted_sh: SignedHeader,
@@ -201,11 +209,7 @@ impl Verifier {
             }
             Err(Error::InsufficientVotingPower) => {
                 // Insufficient voting power to update.  Need bisection.
-
-                // Get the pivot height for bisection.
-                let trusted_h = trusted_state.header.height;
-                let untrusted_h = untrusted_sh.header.height;
-                let pivot_height = trusted_h.checked_add(untrusted_h).expect("height overflow") / 2;
+                let pivot_height = self.compute_pivot_height(&trusted_state, &untrusted_sh);
 
                 Ok(VerifierEvent::VerificationNeeded {
                     trusted_state,
@@ -217,6 +221,17 @@ impl Verifier {
             }
             Err(err) => Err(VerifierError::VerificationFailed(err)),
         }
+    }
+
+    pub fn compute_pivot_height(
+        &self,
+        trusted_state: &TrustedState,
+        untrusted_sh: &SignedHeader,
+    ) -> Height {
+        let trusted_h = trusted_state.header.height;
+        let untrusted_h = untrusted_sh.header.height;
+        let pivot_height = trusted_h.checked_add(untrusted_h).expect("height overflow") / 2;
+        pivot_height
     }
 
     pub fn verify_untrusted_state(
