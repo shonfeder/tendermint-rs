@@ -1,0 +1,18 @@
+
+   LightClient::VerifyAtHeight  -> LightClient::PerformVerification
+-> Verifier::VerifyAtHeight     -> Verifier::StateNeeded
+-> Requester::FetchState        -> Requester::FetchedState
+-> Verifier::FetchedState       -> Verifier::StateVerified
+-> LightClient::NewTrustedState -> LightClient::NewTrustedStates
+
+   LightClient::VerifyAtHeight  -> LightClient::PerformVerification
+-> Verifier::VerifyAtHeight     -> Verifier::StateNeeded
+-> Requester::FetchState        -> Requester::FetchedState
+-> Verifier::FetchedState       -> Verifier::StateVerified
+-> LightClient::NewTrustedState -> LightClient::PerformVerification
+
+   LightClient::VerifyAtHeight  -> LightClient::PerformVerification
+-> Verifier::VerifyAtHeight     -> Verifier::StateNeeded
+-> Requester::FetchState        -> Requester::FetchedState
+-> Verifier::FetchedState       -> Verifier::StateVerified
+-> LightClient::NewTrustedState -> LightClient::AlreadyVerified

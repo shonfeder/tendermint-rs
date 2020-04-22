@@ -12,9 +12,6 @@ pub enum LightClientError {
 }
 
 pub enum LightClientEvent {
-    // Errors
-    Error,
-
     // Inputs
     VerifyAtHeight {
         trusted_state: TrustedState,

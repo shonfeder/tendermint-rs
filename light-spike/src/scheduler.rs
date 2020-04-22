@@ -58,20 +58,19 @@ impl Scheduler {
 
     fn route_event(&self, event: Event) -> Event {
         match event {
-            Event::LightClient(LightClientEvent::NewTrustedStates { .. }) => event,
-
-            Event::Requester(RequesterEvent::FetchedState {
-                height,
-                signed_header,
-                validator_set,
-                next_validator_set,
-            }) => VerifierEvent::FetchedState {
-                height,
-                untrusted_sh: signed_header,
-                untrusted_vals: validator_set,
-                untrusted_next_vals: next_validator_set,
-            }
-            .into(),
+            Event::LightClient(LightClientEvent::PerformVerification {
+                trusted_state,
+                untrusted_height,
+                trust_threshold,
+                trusting_period,
+                now,
+            }) => Event::Verifier(VerifierEvent::VerifyAtHeight {
+                trusted_state,
+                untrusted_height,
+                trust_threshold,
+                trusting_period,
+                now,
+            }),
 
             Event::Verifier(VerifierEvent::StateNeeded(height)) => {
                 RequesterEvent::FetchState(height).into()
@@ -93,6 +92,19 @@ impl Scheduler {
                 trust_threshold,
                 trusting_period,
                 now,
+            }
+            .into(),
+
+            Event::Requester(RequesterEvent::FetchedState {
+                height,
+                signed_header,
+                validator_set,
+                next_validator_set,
+            }) => VerifierEvent::FetchedState {
+                height,
+                untrusted_sh: signed_header,
+                untrusted_vals: validator_set,
+                untrusted_next_vals: next_validator_set,
             }
             .into(),
 

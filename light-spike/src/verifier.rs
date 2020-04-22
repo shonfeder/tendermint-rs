@@ -18,9 +18,6 @@ pub enum VerifierError {
 }
 
 pub enum VerifierEvent {
-    // Errors
-    Error,
-
     // Inputs
     VerifyAtHeight {
         trusted_state: TrustedState,

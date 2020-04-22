@@ -1,14 +1,18 @@
 digraph G {
   dpi = 300.00;
-  pad = 0.5;
-  nodesep = 2;
+  pad = 0.8;
+  nodesep = 1;
 
   Client [shape = box];
+  LightClientDone [label = "LightClient (done)"];
+
   Client      -> LightClient  [label = "VerifyAtHeight"];
-  LightClient -> Verifier     [label = "VerifyAtHeight"];
-  Verifier    -> Requester    [label = "FetchState"];
-  Requester   -> Verifier     [label = "FetchedState",         style = dashed];
-  Verifier    -> LightClient  [label = "VerifiedTrustedState", style = dashed];
-  Verifier    -> LightClient  [label = "BisectionNeeded",      style = dashed];
-  LightClient -> Client       [label = "NewTrustedStates",     style = dashed];
+  LightClient -> Verifier     [label = "PerformVerification / VerifyAtHeight"];
+  Verifier    -> Requester    [label = "StateNeeded / FetchState"];
+  Requester   -> Verifier     [label = "FetchedState / FetchedState", style = dashed];
+  Verifier    -> LightClient  [label = "VerificationNeeded / VerifyAtHeight", style = dashed];
+  Verifier    -> LightClient  [label = "StateVerified / NewTrustedState", style = dashed];
+  LightClient -> LightClientDone [label = "no more states to verify"];
+  LightClientDone -> Client       [label = "NewTrustedStates", style = dashed];
+  LightClientDone -> Client       [label = "AlreadyVerified", style = dashed];
 }
