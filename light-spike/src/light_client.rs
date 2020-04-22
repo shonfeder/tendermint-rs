@@ -66,6 +66,22 @@ impl LightClient {
         self.pending_heights.clear();
         self.pending_states.clear();
     }
+
+    fn add_to_trusted_store(
+        &mut self,
+        height: Height,
+        trusted_state: TrustedState,
+    ) -> Result<PendingState, LightClientError> {
+        let pending_state = self
+            .pending_states
+            .remove(&height)
+            .ok_or_else(|| LightClientError::NoMatchingPendingState(height))?;
+
+        self.trusted_store.set(height, trusted_state.clone());
+        self.verified_states.push(trusted_state);
+
+        Ok(pending_state)
+    }
 }
 
 impl Handler<LightClientEvent> for LightClient {
@@ -106,17 +122,8 @@ impl Handler<LightClientEvent> for LightClient {
                 match latest_height_to_verify {
                     // The height of the new trusted state matches the next height we needed to verify.
                     Some(latest_height_to_verify) if latest_height_to_verify == new_height => {
-                        let pending_state = self
-                            .pending_states
-                            .remove(&latest_height_to_verify)
-                            .ok_or_else(|| {
-                                LightClientError::NoMatchingPendingState(latest_height_to_verify)
-                            })?;
-
-                        self.trusted_store
-                            .set(new_height, new_trusted_state.clone());
-
-                        self.verified_states.push(new_trusted_state.clone());
+                        let pending_state =
+                            self.add_to_trusted_store(new_height, new_trusted_state.clone())?;
 
                         if let Some(next_height_to_verify) = self.pending_heights.front() {
                             // We have more states to verify
@@ -145,8 +152,8 @@ impl Handler<LightClientEvent> for LightClient {
                         expected: latest_height_to_verify,
                         got: new_height,
                     }),
-                    // There were no more heights to verify, ignore the event.
-                    None => Ok(LightClientEvent::AlreadyVerified(new_height)),
+                    // There were no more heights to verify, raise an error.
+                    None => todo!(),
                 }
             }
             _ => unreachable!(),

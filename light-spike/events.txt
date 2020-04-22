@@ -1,18 +1,17 @@
 
-   LightClient::VerifyAtHeight  -> LightClient::PerformVerification
--> Verifier::VerifyAtHeight     -> Verifier::StateNeeded
--> Requester::FetchState        -> Requester::FetchedState
--> Verifier::FetchedState       -> Verifier::StateVerified
--> LightClient::NewTrustedState -> LightClient::NewTrustedStates
+LightClient::VerifyAtHeight
+   -> LightClient::PerformVerification
+      -> Verifier::VerifyAtHeight
+         -> Verifier::StateNeeded
+            -> Requester::FetchState
+               -> Requester::FetchedState
+                  -> Verifier::FetchedState
+                     -> Verifier::StateVerified
+                        -> LightClient::NewTrustedState
+                            -> LightClient::NewTrustedStates (done with verification)
+                            -> LightClient::PerformVerification (bisection)
+                            -> LightClient::AlreadyVerified (?)
+                     -> Verifier::VerificationNeeded
+                        -> LightClient::VerifyAtHeight
+                            -> ...
 
-   LightClient::VerifyAtHeight  -> LightClient::PerformVerification
--> Verifier::VerifyAtHeight     -> Verifier::StateNeeded
--> Requester::FetchState        -> Requester::FetchedState
--> Verifier::FetchedState       -> Verifier::StateVerified
--> LightClient::NewTrustedState -> LightClient::PerformVerification
-
-   LightClient::VerifyAtHeight  -> LightClient::PerformVerification
--> Verifier::VerifyAtHeight     -> Verifier::StateNeeded
--> Requester::FetchState        -> Requester::FetchedState
--> Verifier::FetchedState       -> Verifier::StateVerified
--> LightClient::NewTrustedState -> LightClient::AlreadyVerified
