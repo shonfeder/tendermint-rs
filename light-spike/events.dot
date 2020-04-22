@@ -14,5 +14,4 @@ digraph G {
   Verifier        -> LightClient      [label = "StateVerified / NewTrustedState", style = dashed];
   LightClient     -> LightClientDone  [label = "no more states to verify"];
   LightClientDone -> Client           [label = "NewTrustedStates", style = dashed];
-  LightClientDone -> Client           [label = "AlreadyVerified", style = dashed];
 }

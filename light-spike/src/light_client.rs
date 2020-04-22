@@ -8,7 +8,6 @@ use crate::{prelude::*, trusted_store::TSReadWriter};
 #[derive(Clone, Debug)]
 pub enum LightClientError {
     NoMatchingPendingState(Height),
-    NextHeightMismatch { expected: Height, got: Height },
 }
 
 pub enum LightClientEvent {
@@ -34,7 +33,6 @@ pub enum LightClientEvent {
         trusted_height: Height,
         trusted_states: Vec<TrustedState>,
     },
-    AlreadyVerified(Height),
 }
 
 pub struct PendingState {
@@ -62,25 +60,20 @@ impl LightClient {
         }
     }
 
-    fn reset(&mut self) {
+    fn reset(&mut self) -> Vec<TrustedState> {
         self.pending_heights.clear();
         self.pending_states.clear();
+
+        std::mem::replace(&mut self.verified_states, Vec::new())
     }
 
-    fn add_to_trusted_store(
-        &mut self,
-        height: Height,
-        trusted_state: TrustedState,
-    ) -> Result<PendingState, LightClientError> {
-        let pending_state = self
-            .pending_states
-            .remove(&height)
-            .ok_or_else(|| LightClientError::NoMatchingPendingState(height))?;
+    fn save_trusted_state(&mut self, trusted_state: TrustedState) -> Result<(), LightClientError> {
+        let height = trusted_state.header.height;
 
         self.trusted_store.set(height, trusted_state.clone());
         self.verified_states.push(trusted_state);
 
-        Ok(pending_state)
+        Ok(())
     }
 }
 
@@ -116,44 +109,30 @@ impl Handler<LightClientEvent> for LightClient {
                 })
             }
             LightClientEvent::NewTrustedState(new_trusted_state) => {
-                let new_height = new_trusted_state.header.height;
-                let latest_height_to_verify = self.pending_heights.pop_front();
+                self.save_trusted_state(new_trusted_state.clone())?;
 
-                match latest_height_to_verify {
-                    // The height of the new trusted state matches the next height we needed to verify.
-                    Some(latest_height_to_verify) if latest_height_to_verify == new_height => {
-                        let pending_state =
-                            self.add_to_trusted_store(new_height, new_trusted_state.clone())?;
+                if let Some(pending_height) = self.pending_heights.pop_front() {
+                    // We have more states to verify
+                    let pending_state = self
+                        .pending_states
+                        .remove(&pending_height)
+                        .ok_or_else(|| LightClientError::NoMatchingPendingState(pending_height))?;
 
-                        if let Some(next_height_to_verify) = self.pending_heights.front() {
-                            // We have more states to verify
-                            Ok(LightClientEvent::PerformVerification {
-                                trusted_state: new_trusted_state,
-                                untrusted_height: *next_height_to_verify,
-                                trust_threshold: pending_state.trust_threshold,
-                                trusting_period: pending_state.trusting_period,
-                                now: pending_state.now,
-                            })
-                        } else {
-                            // No more heights to verify, we are done, return all verified states
-                            let verified_states =
-                                std::mem::replace(&mut self.verified_states, Vec::new());
+                    Ok(LightClientEvent::PerformVerification {
+                        trusted_state: new_trusted_state,
+                        untrusted_height: pending_height,
+                        trust_threshold: pending_state.trust_threshold,
+                        trusting_period: pending_state.trusting_period,
+                        now: pending_state.now,
+                    })
+                } else {
+                    // No more pending heights to verify, we are done, return all verified states
+                    let verified_states = self.reset();
 
-                            self.reset();
-
-                            Ok(LightClientEvent::NewTrustedStates {
-                                trusted_height: latest_height_to_verify,
-                                trusted_states: verified_states.into(),
-                            })
-                        }
-                    }
-                    // The height of the new trusted state does not match the latest height we needed to verify.
-                    Some(latest_height_to_verify) => Err(LightClientError::NextHeightMismatch {
-                        expected: latest_height_to_verify,
-                        got: new_height,
-                    }),
-                    // There were no more heights to verify, raise an error.
-                    None => todo!(),
+                    Ok(LightClientEvent::NewTrustedStates {
+                        trusted_height: new_trusted_state.header.height,
+                        trusted_states: verified_states.into(),
+                    })
                 }
             }
             _ => unreachable!(),

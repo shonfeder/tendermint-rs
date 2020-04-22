@@ -10,7 +10,6 @@ LightClient::VerifyAtHeight
                         -> LightClient::NewTrustedState
                             -> LightClient::NewTrustedStates (done with verification)
                             -> LightClient::PerformVerification (bisection)
-                            -> LightClient::AlreadyVerified (?)
                      -> Verifier::VerificationNeeded
                         -> LightClient::VerifyAtHeight
                             -> ...
