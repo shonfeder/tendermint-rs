@@ -1,5 +1,5 @@
-pub use crate::bichan::*;
 pub use crate::components::demuxer::*;
+pub use crate::components::router::*;
 pub use crate::components::rpc::*;
 pub use crate::components::scheduler::*;
 pub use crate::components::verifier::*;

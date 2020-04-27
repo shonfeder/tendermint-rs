@@ -14,9 +14,7 @@ derive_more = "0.99.5"
 serde = "1.0.106"
 serde_derive = "1.0.106"
 thiserror = "1.0.15"
-tokio = { version = "0.2.19", features = ["sync", "macros"] }
 typetag = "0.1.4"
-async-recursion = "0.3.1"
 
 [dev-dependencies]
 serde_json = "1.0.51"
