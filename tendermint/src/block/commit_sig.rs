@@ -34,6 +34,29 @@ pub enum CommitSig {
     },
 }
 
+impl CommitSig {
+    /// Whether this signature is absent (no vote was received from validator)
+    pub fn is_absent(&self) -> bool {
+        self == &Self::BlockIDFlagAbsent
+    }
+
+    /// Whether this signature is a commit  (validator voted for the Commit.BlockId)
+    pub fn is_commit(&self) -> bool {
+        match self {
+            Self::BlockIDFlagCommit { .. } => true,
+            _ => false,
+        }
+    }
+
+    /// Whether this signature is nil (validator voted for nil)
+    pub fn is_nil(&self) -> bool {
+        match self {
+            Self::BlockIDFlagNil { .. } => true,
+            _ => false,
+        }
+    }
+}
+
 // Todo: https://github.com/informalsystems/tendermint-rs/issues/259 - CommitSig Timestamp can be zero time
 // Todo: https://github.com/informalsystems/tendermint-rs/issues/260 - CommitSig validator address missing in Absent vote
 impl TryFrom<RawCommitSig> for CommitSig {
